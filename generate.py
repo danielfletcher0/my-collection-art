@@ -35,6 +35,7 @@ import json
 import math
 import os
 import random
+import shutil
 import sys
 import threading
 import time
@@ -879,7 +880,7 @@ def pick_many(items: list[dict], slug: str, seed: str, k: int) -> list[dict]:
 
 
 NAME_FROM_TITLE = ("network", "provider", "company", "person", "keyword", "genre")
-FOLDER_KEYS = ("subtitle", "design", "style", "accent", "pool", "rotate")
+FOLDER_KEYS = ("subtitle", "design", "designs", "style", "accent", "pool", "rotate")
 
 
 def load_folders(cfg: dict) -> list[dict]:
@@ -938,66 +939,93 @@ class Ctx:
 
 
 def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
-    """Render one folder's cover + wide card. Returns its manifest entry and a log line."""
+    """Render one folder in every design. Returns its manifest entry and a log line.
+
+    The folder's main design is also saved as art/<path>/cover.jpg + wide.jpg (the links you put
+    in Nuvio); every design, main included, is saved as art/<path>/<design>/cover.jpg + wide.jpg.
+    """
     args, path, src = ctx.args, f["path"], f["source"]
-    design = args.design or f.get("design", ctx.settings.get("design", "backdrop"))
+    main = args.design or f.get("design", ctx.settings.get("design", "backdrop"))
+    wanted = as_list(f.get("designs") or ctx.settings.get("designs") or list(DESIGNS))
+    designs = [main] + [d for d in wanted if d != main]
     entry = {"path": path, "slug": f["slug"], "title": f["title"], "category": f["category"],
-             "design": design, "cover_url": f"{base}/art/{path}/cover.jpg",
-             "wide_url": f"{base}/art/{path}/wide.jpg"}
+             "design": main, "cover_url": f"{base}/art/{path}/cover.jpg",
+             "wide_url": f"{base}/art/{path}/wide.jpg", "designs": {}}
     notes: list[str] = []
+    out = ART / path
     try:
-        if design not in RENDERERS:
-            raise ValueError(f"unknown design '{design}' (choose from {', '.join(DESIGNS)})")
-        need = POSTERS_NEEDED[design]
-        bg, posters, picked = None, [], []
+        bad = [d for d in designs if d not in RENDERERS]
+        if bad:
+            raise ValueError(f"unknown design '{bad[0]}' (choose from {', '.join(DESIGNS)})")
+        items = [] if args.demo else ctx.items_for(f, max(POSTERS_NEEDED[d] for d in designs), notes)
+        pool = int(f.get("pool", 20))
+        # Simkl folders default to "most recent first"; everything else rotates nightly
+        rotate = f.get("rotate", src.get("type") != "simkl")
+        accent = hex_rgb(f["accent"]) if f.get("accent") else None
 
-        if args.demo:
-            if design == "backdrop":
-                bg = demo_background(f"{path}:{args.seed}")
-            else:
-                posters = [demo_poster(f"{path}:{args.seed}:{i}") for i in range(min(need, 12))]
-            entry["built_from"] = ["demo images"]
-        else:
-            items = ctx.items_for(f, need, notes)
-            pool = int(f.get("pool", 20))
-            # Simkl folders default to "most recent first"; everything else rotates nightly
-            rotate = f.get("rotate", src.get("type") != "simkl")
-            if design == "backdrop":
-                usable = [i for i in items if i.get("backdrop_path")][:pool]
-                if usable:
-                    chosen = usable[day_index(path, args.seed, len(usable))] if rotate else usable[0]
-                    bg = ctx.tmdb.image(chosen["backdrop_path"], "w1280")
-                    picked = [chosen]
-            else:
-                usable = [i for i in items if i.get("poster_path") or i.get("poster_url")][: max(pool, need)]
-                if usable:
-                    picked = pick_many(usable, path, args.seed, need) if rotate else usable[:need]
-                    size = "w342" if design == "mosaic" else "w780"
-                    posters = [poster_image(ctx.tmdb, p, size) for p in picked]
+        for d in designs:
+            try:
+                need = POSTERS_NEEDED[d]
+                bg, posters, picked, render_as = None, [], [], d
+                if args.demo:
+                    if d == "backdrop":
+                        bg = demo_background(f"{path}:{args.seed}")
+                    else:
+                        posters = [demo_poster(f"{path}:{args.seed}:{i}") for i in range(min(need, 12))]
+                    built_from = ["demo images"]
+                else:
+                    if d == "backdrop":
+                        usable = [i for i in items if i.get("backdrop_path")][:pool]
+                        if usable:
+                            chosen = usable[day_index(path, args.seed, len(usable))] if rotate else usable[0]
+                            bg = ctx.tmdb.image(chosen["backdrop_path"], "w1280")
+                            picked = [chosen]
+                    else:
+                        usable = [i for i in items if i.get("poster_path") or i.get("poster_url")][: max(pool, need)]
+                        if usable:
+                            picked = pick_many(usable, path, args.seed, need) if rotate else usable[:need]
+                            size = "w342" if d == "mosaic" else "w780"
+                            posters = [poster_image(ctx.tmdb, p, size) for p in picked]
+                    if picked:
+                        built_from = [p.get("title") or p.get("name") or "?" for p in picked]
+                    elif src.get("type") == "simkl" and not items:
+                        # an empty list (nothing on hold, say) still gets a cover, just an abstract one
+                        bg, render_as, built_from = demo_background(f"{path}:empty"), "backdrop", ["(list is empty)"]
+                    elif d == "backdrop":
+                        raise RuntimeError("no titles with backdrops (try a poster design)")
+                    else:
+                        raise RuntimeError("source returned no titles with usable images")
 
-            if picked:
-                entry["built_from"] = [p.get("title") or p.get("name") or "?" for p in picked]
-                entry["tmdb"] = [f"{p.get('media_type', 'movie')}/{p['id']}" for p in picked]
-            elif src.get("type") == "simkl":
-                # an empty list (nothing on hold, say) still gets a cover, just an abstract one
-                bg, design = demo_background(f"{path}:empty"), "backdrop"
-                entry["built_from"] = ["(list is empty)"]
-            else:
-                raise RuntimeError("source returned no titles with usable images")
+                if accent is None:  # pick once, so every design of a folder shares its colour
+                    accent = accent_from(bg or posters[0])
+                (out / d).mkdir(parents=True, exist_ok=True)
+                for name, size in (("cover", COVER), ("wide", WIDE)):
+                    img = RENDERERS[render_as](bg, posters, size, f["title"], f.get("subtitle"), accent,
+                                               f.get("style", "bottom"))
+                    img.save(out / d / f"{name}.jpg", "JPEG", quality=86, optimize=True, progressive=True)
+                    if d == main:
+                        shutil.copyfile(out / d / f"{name}.jpg", out / f"{name}.jpg")
+                entry["designs"][d] = {"cover_url": f"{base}/art/{path}/{d}/cover.jpg",
+                                       "wide_url": f"{base}/art/{path}/{d}/wide.jpg"}
+                if d == main:
+                    entry["built_from"] = built_from
+                    if picked:
+                        entry["tmdb"] = [f"{p.get('media_type', 'movie')}/{p['id']}" for p in picked]
+            except Exception as e:
+                if d == main:
+                    raise
+                entry.setdefault("design_errors", {})[d] = str(e)
 
-            # your Simkl lists stay out of the public manifest/gallery (the images still show posters)
-            if src.get("type") == "simkl" and not src.get("show_titles", False):
-                entry["built_from"] = [f"simkl {src.get('status', 'watching')}"]
-                entry.pop("tmdb", None)
-
-        accent = hex_rgb(f["accent"]) if f.get("accent") else accent_from(bg or posters[0])
-        out = ART / path
-        out.mkdir(parents=True, exist_ok=True)
-        for name, size in (("cover", COVER), ("wide", WIDE)):
-            img = RENDERERS[design](bg, posters, size, f["title"], f.get("subtitle"), accent, f.get("style", "bottom"))
-            img.save(out / f"{name}.jpg", "JPEG", quality=86, optimize=True, progressive=True)
-        line = f"✓ {path:<44} {design:<10} {', '.join(entry['built_from'][:3])}"
-    except Exception as e:  # keep going; yesterday's file stays in place
+        # your Simkl lists stay out of the public manifest/gallery (the images still show posters)
+        if src.get("type") == "simkl" and not src.get("show_titles", False) and not args.demo:
+            entry["built_from"] = [f"simkl {src.get('status', 'watching')}"]
+            entry.pop("tmdb", None)
+        others = [d for d in entry["designs"] if d != main]
+        line = (f"✓ {path:<44} {main:<10} {', '.join(entry['built_from'][:3])}"
+                + (f"   (+{', '.join(others)})" if others else ""))
+        for d, err in entry.get("design_errors", {}).items():
+            line += f"\n    · {d} skipped: {err}"
+    except Exception as e:  # keep going; yesterday's files stay in place
         entry["error"] = str(e)
         line = f"✗ {path:<44} {e}"
     if notes:
@@ -1030,7 +1058,11 @@ def write_gallery(manifest: dict) -> None:
         return f"""<figure><img src="art/{c['path']}/cover.jpg" alt="{c['title']}" loading="lazy">
 <img class="wide" src="art/{c['path']}/wide.jpg" alt="" loading="lazy">
 <figcaption><b>{c['title']}</b><span>{c.get('design', '')} · {', '.join(c.get('built_from', [])) or c.get('error', '')}</span>
-<code>{c['cover_url']}</code><code>{c['wide_url']}</code></figcaption></figure>"""
+<code>{c['cover_url']}</code><code>{c['wide_url']}</code>{designs(c)}</figcaption></figure>"""
+
+    def designs(c):
+        links = " ".join(f'<a href="art/{c['path']}/{d}/cover.jpg">{d}</a>' for d in c.get("designs", {}))
+        return f"<span class=d>All designs: {links}</span>" if links else ""
 
     body = "\n".join(f"<h2>{g} <small>{len(cs)}</small></h2><div class=\"g\">{''.join(card(c) for c in cs)}</div>"
                      for g, cs in groups.items())
@@ -1044,7 +1076,7 @@ h1{{font-weight:800;letter-spacing:-.02em}} h2{{margin:40px 0 16px}} small{{colo
 figure{{margin:0;background:#16161b;border-radius:12px;overflow:hidden}}
 img{{width:100%;display:block}} .wide{{border-top:1px solid #222}}
 figcaption{{padding:12px;display:grid;gap:4px}} span{{color:#888}}
-code{{font-size:11px;color:#7ab;word-break:break-all;user-select:all}}
+code{{font-size:11px;color:#7ab;word-break:break-all;user-select:all}} .d a{{color:#7ab;margin-right:6px}}
 </style>
 <h1>Collection Art</h1><p>Generated {manifest['generated']} · rotation seed {manifest['seed']}</p>
 {body}

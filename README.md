@@ -10,6 +10,7 @@ Each folder gets two images:
 | --- | --- | --- |
 | `art/<category>/<folder>/cover.jpg` | 1000×1500 (2:3) | poster-shaped folders |
 | `art/<category>/<folder>/wide.jpg`  | 1280×720 (16:9) | landscape folders |
+| `art/<category>/<folder>/<design>/…` | same two sizes | the folder in each of the four designs |
 
 ## What's included
 
@@ -43,7 +44,17 @@ Each folder gets two images:
 | `fan` | Three posters fanned out, the middle one in front | 3 posters |
 | `mosaic` | A tilted wall of posters behind the title | up to 18 posters |
 
-All four rotate nightly, never repeating the previous day's main pick. To try another look on a whole category without a key, run `python generate.py --demo --design fan --only genres`.
+All four rotate nightly, never repeating the previous day's main pick.
+
+**Every folder is built in all four designs.** A folder's `design:` is its main look, and that's what its plain links show:
+
+```
+.../art/genres/horror/cover.jpg              ← main design
+.../art/genres/horror/mosaic/cover.jpg       ← the same folder as a mosaic
+.../art/genres/horror/fan/wide.jpg           ← the same folder as a fan, landscape
+```
+
+In `manifest.json`, each folder has a `designs` section listing the cover and wide links for every design, so you can use a different look for any folder in Nuvio without touching the config. To build fewer designs, edit `designs:` under `settings:` in `collections.yaml`. A folder or category can also set its own list. Backdrop is skipped for folders whose titles have no backdrops (for example, anime TMDB can't match).
 
 ## Setup (about 15 minutes, once)
 
@@ -158,5 +169,3 @@ Then open `index.html` to see every cover, grouped by category.
 ## Credits
 
 Backdrops and posters come from [TMDB](https://www.themoviedb.org), and from [Simkl](https://simkl.com) for Simkl titles TMDB can't match. *This product uses the TMDB API but is not endorsed or certified by TMDB.* The images belong to their studios. Keep this for personal use, and follow [TMDB's API terms](https://www.themoviedb.org/api-terms-of-use). The category structure follows [Kaptain's Collection](https://kaptain.stream).
-#   m y - c o l l e c t i o n - a r t  
- 
