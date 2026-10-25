@@ -10,7 +10,7 @@ Each folder gets two images:
 | --- | --- | --- |
 | `art/<category>/<folder>/cover.jpg` | 1000×1500 (2:3) | poster-shaped folders |
 | `art/<category>/<folder>/wide.jpg`  | 1280×720 (16:9) | landscape folders |
-| `art/<category>/<folder>/<design>/…` | same two sizes | the folder in each of the four designs |
+| `art/<category>/<folder>/<design>/…` | same two sizes | the folder in each design |
 
 ## What's included
 
@@ -43,10 +43,14 @@ Each folder gets two images:
 | `spotlight` | One poster on a blurred copy of itself. On the wide card the poster sits on the right and the title on the left. | 1 poster |
 | `fan` | Three posters fanned out, the middle one in front | 3 posters |
 | `mosaic` | A tilted wall of posters behind the title | up to 18 posters |
+| `logo` | Just the network's, service's or studio's logo on a card in its brand colour | the logo |
+| `topic` | Just the folder's name on a colourful card, with no movie art | nothing |
 
-All four rotate nightly, never repeating the previous day's main pick.
+`logo` is made only for folders about one network, streaming service or studio: the Networks, Streaming Services and Studios categories, 106 folders. Logos come from TMDB. Dark or grey wordmarks are turned white so they show up, and a service that TMDB only has an app icon for is shown as a rounded tile. To use a logo TMDB doesn't have, add `logo: https://...png` to that folder. `topic` works for every folder and never changes, since it isn't built from any movie art.
 
-**Every folder is built in all four designs.** A folder's `design:` is its main look, and that's what its plain links show:
+The four poster and backdrop designs rotate nightly, never repeating the previous day's main pick.
+
+**Every folder is built in every design.** A folder's `design:` is its main look, and that's what its plain links show:
 
 ```
 .../art/genres/horror/cover.jpg              ← main design
@@ -54,7 +58,7 @@ All four rotate nightly, never repeating the previous day's main pick.
 .../art/genres/horror/fan/wide.jpg           ← the same folder as a fan, landscape
 ```
 
-In `manifest.json`, each folder has a `designs` section listing the cover and wide links for every design, so you can use a different look for any folder in Nuvio without touching the config. To build fewer designs, edit `designs:` under `settings:` in `collections.yaml`. A folder or category can also set its own list. Backdrop is skipped for folders whose titles have no backdrops (for example, anime TMDB can't match).
+In `manifest.json`, each folder has a `designs` section listing the cover and wide links for every design, so you can use a different look for any folder in Nuvio without touching the config. To build fewer designs, edit `designs:` under `settings:` in `collections.yaml`. A folder or category can also set its own list, or switch its main look; for example, add `design: logo` to the Networks category so their plain links show logos. Backdrop is skipped for folders whose titles have no backdrops (for example, anime TMDB can't match).
 
 ## Setup (about 15 minutes, once)
 

@@ -35,7 +35,7 @@
 #     { type: titles, items: ["movie/603", "tv/1399"] }
 #     { type: simkl, status: plantowatch, media: anime }   one of your Simkl lists
 #
-# DESIGN — backdrop | spotlight | fan | mosaic. `design:` is the folder's main look (its plain
+# DESIGN — backdrop | spotlight | fan | mosaic | logo | topic. `design:` is the folder's main look (its plain
 #          cover.jpg/wide.jpg links). Every folder is also built in all the designs listed under
 #          settings → designs, at art/<category>/<folder>/<design>/cover.jpg; manifest.json lists them.
 #          A folder or category can set its own `designs: [fan, mosaic]`.
@@ -47,7 +47,7 @@ settings:
   region: US            # for streaming services
   language: en-US
   design: backdrop      # main design for folders/categories that don't set one
-  designs: [backdrop, spotlight, fan, mosaic]   # every folder is ALSO built in each of these;
+  designs: [backdrop, spotlight, fan, mosaic, logo, topic]   # every folder is ALSO built in each of these;
                                                 # remove any you don't want, to save time and space
   workers: 6
 

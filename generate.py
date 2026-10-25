@@ -44,7 +44,7 @@ from pathlib import Path
 
 import requests
 import yaml
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
 ROOT = Path(__file__).resolve().parent
 ART = ROOT / "art"
@@ -56,8 +56,9 @@ IMG = "https://image.tmdb.org/t/p"
 
 COVER = (1000, 1500)
 WIDE = (1280, 720)
-DESIGNS = ("backdrop", "spotlight", "fan", "mosaic")
-POSTERS_NEEDED = {"backdrop": 0, "spotlight": 1, "fan": 3, "mosaic": 18}
+DESIGNS = ("backdrop", "spotlight", "fan", "mosaic", "logo", "topic")
+POSTERS_NEEDED = {"backdrop": 0, "spotlight": 1, "fan": 3, "mosaic": 18, "logo": 0, "topic": 0}
+USES_TITLES = ("backdrop", "spotlight", "fan", "mosaic")  # designs built from movie/show art
 
 
 # ============================================================================ TMDB
@@ -230,6 +231,10 @@ class Resolver:
         """Streaming service ID in a region, matched loosely ("HBO Max" = "Max", "Disney+" = "Disney Plus")."""
         if isinstance(name, int) or str(name).isdigit():
             return int(name), str(name)
+        rec = self.provider_record(name, region)
+        return (rec["provider_id"], rec["provider_name"]) if rec else None
+
+    def provider_record(self, name, region: str):
 
         def table():
             out = {}
@@ -242,9 +247,12 @@ class Resolver:
         q = norm(name)
         ranked = sorted(provs, key=lambda p: p.get("display_priority", 999))
         for test in (lambda n: n == q, lambda n: n.startswith(q), lambda n: q in n):
-            hit = next((p for p in ranked if test(norm(p["provider_name"]))), None)
+            if isinstance(name, int) or str(name).isdigit():
+                hit = next((p for p in ranked if p["provider_id"] == int(name)), None)
+            else:
+                hit = next((p for p in ranked if test(norm(p["provider_name"]))), None)
             if hit:
-                return hit["provider_id"], hit["provider_name"]
+                return hit
         return None
 
 
@@ -790,11 +798,286 @@ def design_mosaic(bg, posters, size, title, subtitle, accent, style):
                       align="center" if style == "center" else "left")
 
 
+# ---------------------------------------------------------------------------- logo + topic designs
+
+
+def tinted(accent, k: float) -> tuple[int, int, int]:
+    return tuple(int(c * k) for c in accent)  # type: ignore[return-value]
+
+
+def shift_hue(rgb, dh: float, l: float | None = None, s: float | None = None):
+    h, ll, ss = colorsys.rgb_to_hls(*(c / 255 for c in rgb))
+    r, g, b = colorsys.hls_to_rgb((h + dh) % 1, ll if l is None else l, ss if s is None else s)
+    return int(r * 255), int(g * 255), int(b * 255)
+
+
+def brand_bg(size, accent, seed: str, rich: bool = False) -> Image.Image:
+    """Dark backdrop lit by soft blobs of the accent colour, with film grain. No movie art."""
+    w, h = size
+    rnd = random.Random(seed)
+    sw, sh = max(1, w // 8), max(1, h // 8)  # draw small, blur, scale up: smooth and fast
+    img = Image.new("RGB", (sw, sh), tinted(accent, 0.10))
+    d = ImageDraw.Draw(img)
+    blobs = [(accent, 0.5, 0.42 if w < h else 0.5, 0.62)]
+    if rich:
+        blobs = [(accent, rnd.uniform(0.15, 0.4), rnd.uniform(0.15, 0.35), 0.75),
+                 (shift_hue(accent, rnd.choice([-0.09, 0.09]), l=0.45), rnd.uniform(0.6, 0.9), rnd.uniform(0.55, 0.8), 0.7),
+                 (shift_hue(accent, 0.5, l=0.3, s=0.5), rnd.uniform(0.3, 0.7), 1.0, 0.55)]
+    for color, cx, cy, r in blobs:
+        rad = r * max(sw, sh) * 0.6
+        d.ellipse((cx * sw - rad, cy * sh - rad, cx * sw + rad, cy * sh + rad), fill=color)
+    img = img.filter(ImageFilter.GaussianBlur(max(sw, sh) // 5))
+    img = img.resize((w, h), Image.BICUBIC)
+    img = ImageEnhance.Brightness(img).enhance(0.62 if rich else 0.5)
+    # vignette, then grain
+    vig = Image.radial_gradient("L").resize((w, h)).point(lambda v: int(min(255, v * 1.1)))
+    img = Image.composite(Image.new("RGB", size, (6, 6, 9)), img, vig.point(lambda v: int(v * 0.75)))
+    grain = Image.effect_noise((w // 2, h // 2), 28).resize((w, h)).convert("RGB")
+    return Image.blend(img, ImageChops.overlay(img, grain), 0.18)
+
+
+def palette_accent(key: str) -> tuple[int, int, int]:
+    """A pleasant, stable colour for a folder that has no image to take one from."""
+    h = int(hashlib.sha256(key.encode()).hexdigest(), 16) % 360 / 360
+    r, g, b = colorsys.hls_to_rgb(h, 0.66, 0.75)
+    return int(r * 255), int(g * 255), int(b * 255)
+
+
+def logo_is_tile(logo: Image.Image) -> bool:
+    """App-icon style square (no transparency) rather than a cut-out wordmark."""
+    if logo.mode != "RGBA":
+        return True
+    return logo.getchannel("A").getextrema()[0] > 200
+
+
+def prepare_logo(logo: Image.Image) -> Image.Image:
+    """Trim transparent padding; turn dark or grey wordmarks white so they read on a dark card."""
+    logo = logo.convert("RGBA")
+    box = logo.getchannel("A").point(lambda v: 255 if v > 16 else 0).getbbox()
+    if box:
+        logo = logo.crop(box)
+    small = logo.resize((64, max(1, round(64 * logo.height / max(1, logo.width)))))
+    px = [(r, g, b) for r, g, b, a in small.getdata() if a > 128]
+    if px:
+        lum = sum(0.2126 * r + 0.7152 * g + 0.0722 * b for r, g, b in px) / len(px) / 255
+        sat = sum(colorsys.rgb_to_hls(r / 255, g / 255, b / 255)[2] for r, g, b in px) / len(px)
+        if lum < 0.42 or (sat < 0.12 and lum < 0.7):
+            white = Image.new("RGBA", logo.size, (250, 250, 248, 0))
+            white.putalpha(logo.getchannel("A"))
+            logo = white
+    return logo
+
+
+def logo_accent(logo: Image.Image):
+    """The logo's own brand colour, if it has a vivid one."""
+    rgba = logo.convert("RGBA").resize((48, 48))
+    px = [(r, g, b) for r, g, b, a in rgba.getdata() if a > 128]
+    best, score = None, 0.0
+    for r, g, b in px:
+        h, l, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+        if s > 0.45 and 0.25 < l < 0.75 and s > score:
+            best, score = (r, g, b), s
+    return best
+
+
+def small_caption(img: Image.Image, text: str | None, accent, y: int):
+    """Tracked-out subtitle and accent bar, centred, starting at y."""
+    w, h = img.size
+    d = ImageDraw.Draw(img)
+    f = ImageFont.truetype(str(FONT_SUB), max(18, int(min(w, h) * 0.036)))
+    if text:
+        st, track = text.upper(), int(f.size * 0.3)
+        tw = sum(d.textlength(c, font=f) for c in st) + track * (len(st) - 1)
+        x = (w - tw) / 2
+        for c in st:
+            d.text((x, y), c, font=f, fill=(225, 225, 225))
+            x += d.textlength(c, font=f) + track
+        y += int(f.size * 1.9)
+    bw, bh = int(min(w, h) * 0.12), max(5, int(min(w, h) * 0.008))
+    d.rounded_rectangle(((w - bw) // 2, y, (w + bw) // 2, y + bh), radius=bh // 2, fill=accent)
+
+
+def design_logo(logo, posters, size, title, subtitle, accent, style):
+    """The network / service / studio logo, big and centred, on a brand-coloured card."""
+    w, h = size
+    base = brand_bg(size, accent, title)
+    cover = w < h
+    if logo_is_tile(logo):  # square app icon: show it as a rounded tile
+        side = int(min(w, h) * (0.46 if cover else 0.5))
+        tile = fill(logo.convert("RGB"), (side, side), 0.5, 0.5).convert("RGBA")
+        m = Image.new("L", (side, side), 0)
+        ImageDraw.Draw(m).rounded_rectangle((0, 0, side - 1, side - 1), radius=int(side * 0.22), fill=255)
+        tile.putalpha(m)
+        paste_card(base, tile, (w // 2, int(h * (0.44 if cover else 0.45))), shadow=0.8)
+    else:  # cut-out wordmark
+        mark = prepare_logo(logo)
+        bw, bh = (w * 0.72, h * 0.2) if cover else (w * 0.5, h * 0.34)
+        k = min(bw / mark.width, bh / mark.height)
+        mark = mark.resize((max(1, int(mark.width * k)), max(1, int(mark.height * k))), Image.LANCZOS)
+        cx, cy = w // 2, int(h * (0.45 if cover else 0.44))
+        x, y = cx - mark.width // 2, cy - mark.height // 2
+        glow = Image.new("L", size, 0)
+        glow.paste(mark.getchannel("A").point(lambda v: int(v * 0.5)), (x, y))
+        glow = glow.filter(ImageFilter.GaussianBlur(max(12, mark.height // 3)))
+        base = Image.composite(Image.new("RGB", size, shift_hue(accent, 0, l=0.7)), base, glow)
+        base.paste(mark, (x, y), mark)
+    small_caption(base, subtitle, accent, int(h * (0.72 if cover else 0.76)))
+    return base
+
+
+def design_topic(bg, posters, size, title, subtitle, accent, style):
+    """Just the folder's name on a colourful card. No movie art, never changes."""
+    w, h = size
+    base = brand_bg(size, accent, title, rich=True)
+    # a huge, faint first letter for some depth
+    letter = title.strip()[:1].upper() or "·"
+    big = ImageFont.truetype(str(FONT_TITLE), int(max(w, h) * 0.95))
+    layer = Image.new("L", size, 0)
+    ld = ImageDraw.Draw(layer)
+    lw = ld.textlength(letter, font=big)
+    ld.text((w - lw * 0.82, -max(w, h) * 0.12), letter, font=big, fill=34)
+    base = Image.composite(Image.new("RGB", size, shift_hue(accent, 0, l=0.8)), base, layer)
+    base = shade(base, vertical_mask(size, lambda t: 170 * max(0, (t - 0.45) / 0.55) ** 1.5))
+    pad = int(w * 0.075)
+    return draw_title(base, title, subtitle, accent, (pad, 0, w - pad, int(h * 0.93)),
+                      valign="center" if style == "center" else "bottom",
+                      align="center" if style == "center" else "left")
+
+
+# where a streaming service has a TMDB network page, its wordmark is nicer than the app icon
+PROVIDER_NETWORK = {
+    "netflix": 213, "disneyplus": 2739, "hulu": 453, "amazonprimevideo": 1024, "primevideo": 1024,
+    "appletv": 2552, "appletvplus": 2552, "hbomax": 3186, "max": 3186, "paramountplus": 4330,
+    "peacock": 3353, "peacockpremium": 3353, "crunchyroll": 1112, "starz": 318,
+}
+
+
+def logo_kind(f: dict):
+    """What a folder's logo would be, from its config alone: ('url'|'network'|'provider'|'company', value)."""
+    if f.get("logo"):
+        return "url", f["logo"]
+    s = dict(f.get("source") or {})
+    t = s.get("type", "discover")
+    if t in ("network", "provider", "company"):
+        names = as_list(s.get("name")) + as_list(s.get("names")) + as_list(s.get("id"))
+        return (t, names[0]) if len(names) == 1 else None
+    nets, provs, cos = (as_list(s.get(k)) for k in ("networks", "providers", "companies"))
+    if len(nets) == 1 and not provs and not cos:
+        return "network", nets[0]
+    if len(provs) == 1 and not nets and not cos:
+        return "provider", provs[0]
+    if len(cos) == 1 and not nets and not provs:
+        return "company", cos[0]
+    return None
+
+
+def fetch_logo_file(tmdb: "TMDB", path: str) -> Image.Image:
+    """Download a TMDB logo keeping transparency. SVG logos: try TMDB's PNG copy, then cairosvg."""
+    tries = [path] if not path.lower().endswith(".svg") else [path[:-4] + ".png", path]
+    last = None
+    for p in tries:
+        r = tmdb.s.get(f"{IMG}/w500{p}" if p.lower().endswith(".png") else f"{IMG}/original{p}", timeout=30)
+        if r.status_code != 200:
+            last = RuntimeError(f"logo download failed ({r.status_code})")
+            continue
+        data = r.content
+        if data.lstrip()[:1] == b"<":  # SVG
+            try:
+                import cairosvg
+                data = cairosvg.svg2png(bytestring=data, output_width=1200)
+            except Exception as e:
+                last = RuntimeError(f"logo is SVG and couldn't be converted ({e})")
+                continue
+        return Image.open(io.BytesIO(data)).convert("RGBA")
+    raise last or RuntimeError("no logo")
+
+
+def entity_logo(tmdb: "TMDB", kind: str, eid: int) -> Image.Image:
+    """Best logo for a TMDB network or company (PNG preferred, highest rated first)."""
+    data = tmdb.get(f"/{kind}/{eid}/images")
+    logos = sorted(data.get("logos", []), key=lambda l: (l.get("file_type") != ".png", -l.get("vote_average", 0)))
+    paths = [l["file_path"] for l in logos]
+    if not paths:
+        info = tmdb.get(f"/{kind}/{eid}")
+        paths = [info["logo_path"]] if info.get("logo_path") else []
+    for p in paths[:3]:
+        try:
+            return fetch_logo_file(tmdb, p)
+        except Exception:
+            continue
+    raise RuntimeError(f"TMDB has no usable logo for this {kind}")
+
+
+def find_logo(f: dict, ctx) -> Image.Image:
+    kind = logo_kind(f)
+    if not kind:
+        raise RuntimeError("no single network, service or studio to take a logo from")
+    k, v = kind
+    tmdb, res = ctx.tmdb, ctx.res
+    if k == "url":
+        r = requests.get(v, timeout=30)  # plain request: never send the TMDB key elsewhere
+        r.raise_for_status()
+        if r.content.lstrip()[:1] == b"<":
+            import cairosvg
+            return Image.open(io.BytesIO(cairosvg.svg2png(bytestring=r.content, output_width=1200))).convert("RGBA")
+        return Image.open(io.BytesIO(r.content)).convert("RGBA")
+
+    def first(fn):
+        return next((h for h in (fn(a.strip()) for a in str(v).split(" | ")) if h), None)
+
+    if k == "network":
+        hit = first(res.network)
+        if not hit:
+            raise RuntimeError(f"unknown network '{v}'")
+        return entity_logo(tmdb, "network", hit[0])
+    if k == "company":
+        hit = first(res.company)
+        if not hit:
+            raise RuntimeError(f"no TMDB company matches '{v}'")
+        return entity_logo(tmdb, "company", hit[0])
+    # provider: the matching TV network's wordmark if there is one, else the service's app icon
+    region = (f.get("source") or {}).get("region") or res.region
+    rec = first(lambda n: res.provider_record(n, region))
+    if not rec:
+        raise RuntimeError(f"no streaming service matches '{v}'")
+    net = PROVIDER_NETWORK.get(norm(rec["provider_name"]))
+    if net:
+        try:
+            return entity_logo(tmdb, "network", net)
+        except Exception:
+            pass
+    if not rec.get("logo_path"):
+        raise RuntimeError("TMDB has no logo for this service")
+    return tmdb.image(rec["logo_path"], "original")
+
+
+def demo_logo(seed: str, title: str) -> Image.Image:
+    """Fake logo for --demo: a wordmark (white, dark or coloured) or an app-icon tile."""
+    rnd = random.Random(seed)
+    kind = rnd.choice(["white", "dark", "color", "tile"])
+    if kind == "tile":
+        img = Image.new("RGB", (400, 400), palette_accent(seed))
+        d = ImageDraw.Draw(img)
+        f = ImageFont.truetype(str(FONT_TITLE), 250)
+        ch = title[:1].upper()
+        d.text(((400 - d.textlength(ch, font=f)) / 2, 40), ch, font=f, fill=(255, 255, 255))
+        return img
+    f = ImageFont.truetype(str(FONT_TITLE), 160)
+    word = title.upper()
+    tw = int(ImageDraw.Draw(Image.new("L", (1, 1))).textlength(word, font=f)) + 40
+    img = Image.new("RGBA", (tw, 220), (0, 0, 0, 0))
+    color = {"white": (255, 255, 255), "dark": (20, 20, 30), "color": palette_accent(seed + "c")}[kind]
+    ImageDraw.Draw(img).text((20, 10), word, font=f, fill=color + (255,))
+    return img
+
+
 RENDERERS = {
     "backdrop": design_backdrop,
     "spotlight": design_spotlight,
     "fan": design_fan,
     "mosaic": design_mosaic,
+    "logo": design_logo,
+    "topic": design_topic,
 }
 
 
@@ -948,6 +1231,8 @@ def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
     main = args.design or f.get("design", ctx.settings.get("design", "backdrop"))
     wanted = as_list(f.get("designs") or ctx.settings.get("designs") or list(DESIGNS))
     designs = [main] + [d for d in wanted if d != main]
+    # the logo design only applies to folders about one network, streaming service or studio
+    designs = [d for d in designs if d != "logo" or d == main or logo_kind(f)]
     entry = {"path": path, "slug": f["slug"], "title": f["title"], "category": f["category"],
              "design": main, "cover_url": f"{base}/art/{path}/cover.jpg",
              "wide_url": f"{base}/art/{path}/wide.jpg", "designs": {}}
@@ -957,7 +1242,8 @@ def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
         bad = [d for d in designs if d not in RENDERERS]
         if bad:
             raise ValueError(f"unknown design '{bad[0]}' (choose from {', '.join(DESIGNS)})")
-        items = [] if args.demo else ctx.items_for(f, max(POSTERS_NEEDED[d] for d in designs), notes)
+        uses_titles = any(d in USES_TITLES for d in designs)
+        items = [] if args.demo or not uses_titles else ctx.items_for(f, max(POSTERS_NEEDED[d] for d in designs), notes)
         pool = int(f.get("pool", 20))
         # Simkl folders default to "most recent first"; everything else rotates nightly
         rotate = f.get("rotate", src.get("type") != "simkl")
@@ -967,7 +1253,11 @@ def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
             try:
                 need = POSTERS_NEEDED[d]
                 bg, posters, picked, render_as = None, [], [], d
-                if args.demo:
+                if d in ("logo", "topic"):  # no movie art
+                    if d == "logo":
+                        bg = demo_logo(path, f["title"]) if args.demo else find_logo(f, ctx)
+                    built_from = [d]
+                elif args.demo:
                     if d == "backdrop":
                         bg = demo_background(f"{path}:{args.seed}")
                     else:
@@ -996,11 +1286,18 @@ def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
                     else:
                         raise RuntimeError("source returned no titles with usable images")
 
-                if accent is None:  # pick once, so every design of a folder shares its colour
-                    accent = accent_from(bg or posters[0])
+                if d == "logo":  # the brand's own colour where it has one
+                    acc = (hex_rgb(f["accent"]) if f.get("accent") else None) or logo_accent(bg) \
+                        or accent or palette_accent(path)
+                elif d == "topic":
+                    acc = accent or palette_accent(path)
+                else:
+                    if accent is None:  # pick once, so every design of a folder shares its colour
+                        accent = accent_from(bg or posters[0])
+                    acc = accent
                 (out / d).mkdir(parents=True, exist_ok=True)
                 for name, size in (("cover", COVER), ("wide", WIDE)):
-                    img = RENDERERS[render_as](bg, posters, size, f["title"], f.get("subtitle"), accent,
+                    img = RENDERERS[render_as](bg, posters, size, f["title"], f.get("subtitle"), acc,
                                                f.get("style", "bottom"))
                     img.save(out / d / f"{name}.jpg", "JPEG", quality=86, optimize=True, progressive=True)
                     if d == main:
