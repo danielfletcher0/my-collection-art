@@ -35,6 +35,7 @@ import json
 import math
 import os
 import random
+import re
 import shutil
 import sys
 import threading
@@ -56,9 +57,12 @@ IMG = "https://image.tmdb.org/t/p"
 
 COVER = (1000, 1500)
 WIDE = (1280, 720)
-DESIGNS = ("backdrop", "spotlight", "fan", "mosaic", "logo", "topic")
-POSTERS_NEEDED = {"backdrop": 0, "spotlight": 1, "fan": 3, "mosaic": 18, "logo": 0, "topic": 0}
-USES_TITLES = ("backdrop", "spotlight", "fan", "mosaic")  # designs built from movie/show art
+DESIGNS = ("backdrop", "spotlight", "fan", "mosaic", "logo", "topic", "basic",
+           "abstract-spotlight", "abstract-fan", "abstract-mosaic")
+POSTERS_NEEDED = {"backdrop": 0, "spotlight": 1, "fan": 3, "mosaic": 18, "logo": 18, "topic": 12, "basic": 0,
+                  "abstract-spotlight": 0, "abstract-fan": 0, "abstract-mosaic": 0}
+ABSTRACT_POSTERS = {"abstract-spotlight": 1, "abstract-fan": 3, "abstract-mosaic": 12}
+USES_TITLES = ("backdrop", "spotlight", "fan", "mosaic", "logo", "topic")  # built from movie/show art
 
 
 # ============================================================================ TMDB
@@ -765,8 +769,8 @@ def design_fan(bg, posters, size, title, subtitle, accent, style):
     return draw_title(base, title, subtitle, accent, (pad, 0, int(w * 0.5), h), valign="center", align="left")
 
 
-def design_mosaic(bg, posters, size, title, subtitle, accent, style):
-    """A tilted, staggered wall of posters behind the title."""
+def mosaic_wall(posters, size) -> Image.Image:
+    """A tilted, staggered wall of posters filling `size`."""
     w, h = size
     angle = -12
     diag = int(math.hypot(w, h) * 1.08)
@@ -785,8 +789,13 @@ def design_mosaic(bg, posters, size, title, subtitle, accent, style):
             i += 1
             wall.paste(t, (col * (tw + gap) - tw // 3, y_off + row * (th + gap)), t)
     wall = wall.rotate(angle, resample=Image.BICUBIC)
-    base = wall.crop(((diag - w) // 2, (diag - h) // 2, (diag + w) // 2, (diag + h) // 2))
-    base = ImageEnhance.Color(base).enhance(0.85)
+    return wall.crop(((diag - w) // 2, (diag - h) // 2, (diag + w) // 2, (diag + h) // 2))
+
+
+def design_mosaic(bg, posters, size, title, subtitle, accent, style):
+    """A tilted, staggered wall of posters behind the title."""
+    w, h = size
+    base = ImageEnhance.Color(mosaic_wall(posters, size)).enhance(0.85)
     if style == "center":
         base = shade(base, vertical_mask(size, lambda t: 150 + 55 * (1 - abs(t - 0.5) * 2)))
     else:
@@ -898,37 +907,66 @@ def small_caption(img: Image.Image, text: str | None, accent, y: int):
 
 
 def design_logo(logo, posters, size, title, subtitle, accent, style):
-    """The network / service / studio logo, big and centred, on a brand-coloured card."""
+    """The network / service / studio logo, big and centred over a dim wall of its titles. No text."""
     w, h = size
-    base = brand_bg(size, accent, title)
     cover = w < h
+    if posters:  # a dim wall of the service's own titles behind the logo
+        base = mosaic_wall(posters, size).filter(ImageFilter.GaussianBlur(max(2, w // 400)))
+        base = ImageEnhance.Color(base).enhance(0.75)
+        base = ImageEnhance.Brightness(base).enhance(0.42)
+        spot = Image.radial_gradient("L").resize(size)  # darker in the middle, behind the logo
+        base = shade(base, spot.point(lambda v: int(150 * (1 - v / 255) ** 1.5)))
+        base = accent_wash(base, accent)
+    else:
+        base = brand_bg(size, accent, title)
     if logo_is_tile(logo):  # square app icon: show it as a rounded tile
         side = int(min(w, h) * (0.46 if cover else 0.5))
         tile = fill(logo.convert("RGB"), (side, side), 0.5, 0.5).convert("RGBA")
         m = Image.new("L", (side, side), 0)
         ImageDraw.Draw(m).rounded_rectangle((0, 0, side - 1, side - 1), radius=int(side * 0.22), fill=255)
         tile.putalpha(m)
-        paste_card(base, tile, (w // 2, int(h * (0.44 if cover else 0.45))), shadow=0.8)
+        paste_card(base, tile, (w // 2, h // 2), shadow=0.8)
     else:  # cut-out wordmark
         mark = prepare_logo(logo)
         bw, bh = (w * 0.72, h * 0.2) if cover else (w * 0.5, h * 0.34)
         k = min(bw / mark.width, bh / mark.height)
         mark = mark.resize((max(1, int(mark.width * k)), max(1, int(mark.height * k))), Image.LANCZOS)
-        cx, cy = w // 2, int(h * (0.45 if cover else 0.44))
-        x, y = cx - mark.width // 2, cy - mark.height // 2
+        x, y = w // 2 - mark.width // 2, h // 2 - mark.height // 2
         glow = Image.new("L", size, 0)
         glow.paste(mark.getchannel("A").point(lambda v: int(v * 0.5)), (x, y))
         glow = glow.filter(ImageFilter.GaussianBlur(max(12, mark.height // 3)))
         base = Image.composite(Image.new("RGB", size, shift_hue(accent, 0, l=0.7)), base, glow)
         base.paste(mark, (x, y), mark)
-    small_caption(base, subtitle, accent, int(h * (0.72 if cover else 0.76)))
     return base
 
 
-def design_topic(bg, posters, size, title, subtitle, accent, style):
-    """Just the folder's name on a colourful card. No movie art, never changes."""
+def design_topic(bg, posters, size, title, subtitle, accent, style, dark=False):
+    """The folder's name over a straight grid of its posters, tinted in the folder's colour."""
     w, h = size
-    base = brand_bg(size, accent, title, rich=True)
+    if posters:
+        cols = 3 if w < h else 5
+        gap = max(4, w // 160)
+        tw = (w - gap * (cols + 1)) // cols
+        th = int(tw * 1.5)
+        rows = h // (th + gap) + 2
+        grid = Image.new("RGB", size, (8, 8, 10))
+        y0 = -th // 3
+        for r in range(rows):
+            for c in range(cols):
+                p = posters[(r * cols + c) % len(posters)]
+                grid.paste(fill(p, (tw, th), 0.5, 0.5), (gap + c * (tw + gap), y0 + r * (th + gap)))
+        if dark:  # moody: black shadows, deep colour, dim highlights
+            lo, hi, mid = (4, 4, 6), shift_hue(accent, 0, l=0.42, s=0.6), shift_hue(accent, 0, l=0.18, s=0.7)
+        else:
+            lo, hi, mid = shift_hue(accent, 0, l=0.08, s=0.6), shift_hue(accent, 0, l=0.82, s=0.55), accent
+        base = ImageOps.colorize(ImageOps.autocontrast(grid.convert("L"), cutoff=2), lo, hi, mid=mid)
+        base = Image.blend(base, grid, 0.08 if dark else 0.18)  # a hint of the real colours
+        base = shade(base, vertical_mask(size, lambda t: 70 + 185 * max(0, (t - 0.35) / 0.65) ** 1.3))
+        pad = int(w * 0.075)
+        return draw_title(base, title, subtitle, accent, (pad, 0, w - pad, int(h * 0.93)),
+                          valign="center" if style == "center" else "bottom",
+                          align="center" if style == "center" else "left")
+    base = brand_bg(size, accent, title, rich=True)  # nothing to blur (e.g. an empty list)
     # a huge, faint first letter for some depth
     letter = title.strip()[:1].upper() or "·"
     big = ImageFont.truetype(str(FONT_TITLE), int(max(w, h) * 0.95))
@@ -1107,11 +1145,97 @@ DEMO_WORDS = ["NIGHTFALL", "ORBIT", "THE LAST RUN", "HOLLOW", "RED SKY", "ECHOES
               "THE PACT", "OUTLAND", "SIGNAL", "WILDER", "NORTHBOUND"]
 
 
-def demo_poster(seed: str) -> Image.Image:
-    """Fake 2:3 poster: abstract art plus a made-up title, so poster designs can be previewed."""
+DARK_WORDS = ("horror", "thriller", "crime", "war", "mystery", "noir", "gritty", "dark", "spooky", "creepy",
+              "scary", "serial", "killer", "investigat", "scandal", "slow-burn", "slow burn", "tearjerk",
+              "supernatural", "haunt", "apocalyp", "dystop", "survival", "western", "heist", "gangster")
+# deep, moody hues: blood red, crimson, violet, dark teal, navy, ember
+DARK_HUES = (0.0, 0.97, 0.78, 0.5, 0.62, 0.05)
+
+
+def is_dark(f: dict) -> bool:
+    """Dark topic? `mood: dark` / `mood: light` on a folder decides; otherwise its name does."""
+    mood = str(f.get("mood", "")).casefold()
+    if mood in ("dark", "light"):
+        return mood == "dark"
+    text = f"{f.get('path', '')} {f.get('title', '')}".casefold().replace("-", " ")
+    words = [t for t in re.split(r"[^a-z]+", text) if t]
+    for kw in DARK_WORDS:
+        kw = kw.replace("-", " ")
+        if " " in kw:
+            if kw in " ".join(words):
+                return True
+        elif any(t == kw or (len(kw) > 4 and t.startswith(kw)) for t in words):
+            return True
+    return False
+
+
+def dark_accent(key: str) -> tuple[int, int, int]:
+    """A moody colour for a dark topic, still bright enough for the subtitle and bar."""
+    h = DARK_HUES[int(hashlib.sha256(key.encode()).hexdigest(), 16) % len(DARK_HUES)]
+    r, g, b = colorsys.hls_to_rgb(h, 0.5, 0.75)
+    return int(r * 255), int(g * 255), int(b * 255)
+
+
+def dark_background(seed: str, accent, size=(1920, 1080)) -> Image.Image:
+    """Near-black with dim, deep glows of the folder's colour: `basic` for dark topics."""
+    rnd = random.Random(seed)
+    w, h = size
+    hue = colorsys.rgb_to_hls(*(c / 255 for c in accent))[0]
+    img = Image.new("RGB", (w, h), (5, 5, 7))
+    d = ImageDraw.Draw(img)
+    for i in range(9):
+        hh = (hue + (rnd.uniform(-0.03, 0.03) if i % 3 else rnd.choice([-0.08, 0.08]))) % 1
+        r, g, b = colorsys.hls_to_rgb(hh, rnd.uniform(0.1, 0.3), rnd.uniform(0.55, 0.85))
+        cx, cy = rnd.randint(-w // 8, w + w // 8), rnd.randint(-h // 8, int(h * 0.75))
+        rad = rnd.randint(w // 10, w // 4)
+        d.ellipse((cx - rad, cy - rad, cx + rad, cy + rad), fill=(int(r * 255), int(g * 255), int(b * 255)))
+    img = img.filter(ImageFilter.GaussianBlur(w // 18))
+    grain = Image.effect_noise((w // 2, h // 2), 30).resize((w, h)).convert("RGB")
+    return Image.blend(img, ImageChops.overlay(img, grain), 0.22)
+
+
+def design_basic(bg, posters, size, title, subtitle, accent, style, dark=False):
+    """Title over a colour background (`basic_background` or, for dark topics, `dark_background`)."""
+    if not dark:
+        return design_backdrop(bg, posters, size, title, subtitle, accent, style)
+    w, h = size
+    base = fill(bg, size, 0.5 if w > h else 0.62)  # no contrast stretch: keep it dark
+    base = shade(base, vertical_mask(size, lambda t: 230 * max(0.0, (t - 0.45) / 0.55) ** 1.3))
+    pad = int(w * 0.075)
+    return draw_title(base, title, subtitle, accent, (pad, 0, w - pad, int(h * 0.93)),
+                      valign="center" if style == "center" else "bottom",
+                      align="center" if style == "center" else "left")
+
+
+RENDERERS["basic"] = design_basic
+RENDERERS.update({"abstract-spotlight": design_spotlight, "abstract-fan": design_fan,
+                  "abstract-mosaic": design_mosaic})
+
+
+def basic_background(seed: str, accent, size=(1920, 1080)) -> Image.Image:
+    """Soft, vivid colour blobs around the folder's colour: the `basic` design's background."""
+    rnd = random.Random(seed)
+    w, h = size
+    hue = colorsys.rgb_to_hls(*(c / 255 for c in accent))[0]
+    img = Image.new("RGB", (w, h))
+    d = ImageDraw.Draw(img)
+    for y in range(h):
+        r, g, b = colorsys.hls_to_rgb(hue, 0.10 + 0.22 * y / h, 0.6)
+        d.line([(0, y), (w, y)], fill=(int(r * 255), int(g * 255), int(b * 255)))
+    for i in range(12):
+        # mostly the folder's hue, with a few neighbouring hues for depth
+        hh = (hue + (rnd.uniform(-0.06, 0.06) if i % 4 else rnd.choice([-0.16, 0.16]))) % 1
+        r, g, b = colorsys.hls_to_rgb(hh, rnd.uniform(0.32, 0.62), rnd.uniform(0.45, 0.8))
+        cx, cy, rad = rnd.randint(0, w), rnd.randint(0, h), rnd.randint(w // 14, w // 4)
+        d.ellipse((cx - rad, cy - rad, cx + rad, cy + rad), fill=(int(r * 255), int(g * 255), int(b * 255)))
+    return img.filter(ImageFilter.GaussianBlur(w // 22))
+
+
+def demo_poster(seed: str, dark: bool = False) -> Image.Image:
+    """Stand-in 2:3 poster: abstract art plus a made-up title (used by --demo and the abstract designs)."""
     rnd = random.Random(seed)
     w, h = 500, 750
-    img = demo_background(seed, (w, h))
+    img = dark_background(seed, dark_accent(seed), (w, h)) if dark else demo_background(seed, (w, h))
     img = shade(img, vertical_mask((w, h), lambda t: 230 * max(0, (t - 0.6) / 0.4)))
     d = ImageDraw.Draw(img)
     word = rnd.choice(DEMO_WORDS)
@@ -1163,7 +1287,7 @@ def pick_many(items: list[dict], slug: str, seed: str, k: int) -> list[dict]:
 
 
 NAME_FROM_TITLE = ("network", "provider", "company", "person", "keyword", "genre")
-FOLDER_KEYS = ("subtitle", "design", "designs", "style", "accent", "pool", "rotate")
+FOLDER_KEYS = ("subtitle", "design", "designs", "style", "accent", "pool", "rotate", "mood")
 
 
 def load_folders(cfg: dict) -> list[dict]:
@@ -1248,15 +1372,31 @@ def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
         # Simkl folders default to "most recent first"; everything else rotates nightly
         rotate = f.get("rotate", src.get("type") != "simkl")
         accent = hex_rgb(f["accent"]) if f.get("accent") else None
+        dark = is_dark(f)
 
         for d in designs:
             try:
                 need = POSTERS_NEEDED[d]
                 bg, posters, picked, render_as = None, [], [], d
-                if d in ("logo", "topic"):  # no movie art
+                if d in ABSTRACT_POSTERS:  # stand-in posters instead of real ones; never changes
+                    posters = [demo_poster(f"{path}:abstract:{i}", dark) for i in range(ABSTRACT_POSTERS[d])]
+                    render_as, built_from = d.split("-", 1)[1], ["abstract"]
+                elif d == "basic":  # no movie art: colour blobs in the folder's colour, never changes
+                    basic_acc = hex_rgb(f["accent"]) if f.get("accent") else (
+                        dark_accent(path) if dark else palette_accent(path))
+                    bg = (dark_background if dark else basic_background)(path, basic_acc)
+                    built_from = ["basic"]
+                elif d in ("logo", "topic"):  # posters are the background; works without them too
                     if d == "logo":
                         bg = demo_logo(path, f["title"]) if args.demo else find_logo(f, ctx)
-                    built_from = [d]
+                    if args.demo:
+                        posters = [demo_poster(f"{path}:{args.seed}:{i}") for i in range(12)]
+                    else:
+                        usable = [i for i in items if i.get("poster_path") or i.get("poster_url")][: max(pool, need)]
+                        if usable:
+                            picked = pick_many(usable, path, args.seed, need) if rotate else usable[:need]
+                            posters = [poster_image(ctx.tmdb, p, "w342") for p in picked]
+                    built_from = [p.get("title") or p.get("name") or "?" for p in picked] or [d]
                 elif args.demo:
                     if d == "backdrop":
                         bg = demo_background(f"{path}:{args.seed}")
@@ -1289,16 +1429,23 @@ def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
                 if d == "logo":  # the brand's own colour where it has one
                     acc = (hex_rgb(f["accent"]) if f.get("accent") else None) or logo_accent(bg) \
                         or accent or palette_accent(path)
-                elif d == "topic":
-                    acc = accent or palette_accent(path)
+                elif d == "topic":  # dark topics always get a moody colour, not one from the posters
+                    acc = (hex_rgb(f["accent"]) if f.get("accent") else dark_accent(path)) if dark \
+                        else (accent or palette_accent(path))
+                elif d == "basic":
+                    acc = basic_acc
+                elif d in ABSTRACT_POSTERS:
+                    acc = hex_rgb(f["accent"]) if f.get("accent") else (
+                        dark_accent(path) if dark else accent_from(posters[0]))
                 else:
                     if accent is None:  # pick once, so every design of a folder shares its colour
                         accent = accent_from(bg or posters[0])
                     acc = accent
                 (out / d).mkdir(parents=True, exist_ok=True)
                 for name, size in (("cover", COVER), ("wide", WIDE)):
+                    extra = {"dark": dark} if render_as in ("topic", "basic") else {}
                     img = RENDERERS[render_as](bg, posters, size, f["title"], f.get("subtitle"), acc,
-                                               f.get("style", "bottom"))
+                                               f.get("style", "bottom"), **extra)
                     img.save(out / d / f"{name}.jpg", "JPEG", quality=86, optimize=True, progressive=True)
                     if d == main:
                         shutil.copyfile(out / d / f"{name}.jpg", out / f"{name}.jpg")
@@ -1358,8 +1505,9 @@ def write_gallery(manifest: dict) -> None:
 <code>{c['cover_url']}</code><code>{c['wide_url']}</code>{designs(c)}</figcaption></figure>"""
 
     def designs(c):
-        links = " ".join(f'<a href="art/{c['path']}/{d}/cover.jpg">{d}</a>' for d in c.get("designs", {}))
-        return f"<span class=d>All designs: {links}</span>" if links else ""
+        links = "<br>".join(f'{d}: <a href="art/{c['path']}/{d}/cover.jpg">cover</a> '
+                            f'<a href="art/{c['path']}/{d}/wide.jpg">wide</a>' for d in c.get("designs", {}))
+        return f"<span class=d>{links}</span>" if links else ""
 
     body = "\n".join(f"<h2>{g} <small>{len(cs)}</small></h2><div class=\"g\">{''.join(card(c) for c in cs)}</div>"
                      for g, cs in groups.items())
