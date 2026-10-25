@@ -1,0 +1,7 @@
+# Generated output is published to the "art" branch by the workflow
+art/
+manifest.json
+index.html
+__pycache__/
+.env
+.simkl-cache.json

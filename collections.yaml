@@ -1,0 +1,384 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Your Nuvio folders. Each one gets two images that rebuild every night:
+#     art/<category>/<slug>/cover.jpg   (2:3, poster-shaped folders)
+#     art/<category>/<slug>/wide.jpg    (16:9, landscape folders)
+#
+#  To remove a folder: delete its line.  To add one: copy a line and change it.
+#  To check what every folder matches on TMDB (no images):  python generate.py --check
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# A folder is:   - { slug: my-folder, title: My Folder, source: { ... } }
+# Settings on a category (subtitle, design, source...) apply to all its folders unless a folder
+# sets its own.
+#
+# SOURCE — which movies/shows the art is built from. Use names; they're looked up on TMDB.
+#   media:        movie | tv | both (default both)
+#   genres:       [Crime, Thriller]          must have ALL of these genres
+#   any_genres:   [Action, Thriller]         ANY of these genres
+#   keywords:     [heist, bank robbery]      ANY of these TMDB keywords
+#   all_keywords: [anime, sports]            ALL of these keywords
+#   companies:    [Pixar, A24]               studios (any)
+#   networks:     [HBO]                      TV networks (any)
+#   providers:    [Netflix]                  streaming services (any), in `region` (default US)
+#   countries:    [KR, JP]                   country of origin (any)
+#   language:     ja                         original language
+#   years:        [1980, 1989]               release years
+#   recent_days:  90                         released in the last N days
+#   sort:         popularity | rating | revenue
+#   min_votes:    300                        skip obscure titles (TV needs a third of this)
+#   A name like "HBO Max | Max" means "the first of these TMDB knows".
+#
+#   Other source types:
+#     { type: network }                    the folder's title is the network (also: provider, company, keyword, genre)
+#     { type: trending, media: movie }     TMDB trending this week
+#     { type: person, name: Greta Gerwig, role: directing }
+#     { type: titles, items: ["movie/603", "tv/1399"] }
+#     { type: simkl, status: plantowatch, media: anime }   one of your Simkl lists
+#
+# DESIGN — backdrop | spotlight | fan | mosaic
+# OTHER  — subtitle, accent ("#E53935"), style (bottom | center), pool (titles to rotate through),
+#          rotate (true/false; Simkl lists default to most-recent-first)
+
+settings:
+  min_votes: 300
+  region: US            # for streaming services
+  language: en-US
+  design: backdrop
+  workers: 6
+
+categories:
+
+  # ── Your Simkl lists ──────────────────────────────────────────────────────
+  - name: my-lists
+    label: My Lists
+    subtitle: Simkl
+    folders:
+      - { slug: continue-watching,   title: Continue Watching,   design: fan,    source: { type: simkl, status: watching } }
+      - { slug: plan-to-watch,       title: Plan to Watch,       design: mosaic, source: { type: simkl, status: plantowatch, media: both } }
+      - { slug: anime-plan-to-watch, title: Anime Watchlist,     design: mosaic, source: { type: simkl, status: plantowatch, media: anime } }
+
+  # ── Discover ──────────────────────────────────────────────────────────────
+  - name: discover
+    subtitle: Discover
+    design: fan
+    folders:
+      - { slug: for-you,              title: For You,          source: { type: trending, window: day } }
+      - { slug: trending-movies,      title: Trending Movies,  source: { type: trending, media: movie } }
+      - { slug: trending-tv,          title: Trending TV,      source: { type: trending, media: tv } }
+      - { slug: new-movies,           title: New Movies,       source: { media: movie, recent_days: 60, min_votes: 20 } }
+      - { slug: new-series,           title: New Series,       source: { media: tv, recent_days: 120, min_votes: 20 } }
+      - { slug: top-streaming-movies, title: Top Streaming Movies, source: { media: movie, providers: [Netflix, Amazon Prime Video, Disney Plus, "HBO Max | Max", Hulu, "Apple TV Plus | Apple TV"] } }
+      - { slug: top-streaming-series, title: Top Streaming Series, source: { media: tv, providers: [Netflix, Amazon Prime Video, Disney Plus, "HBO Max | Max", Hulu, "Apple TV Plus | Apple TV"] } }
+
+  # ── Genres ────────────────────────────────────────────────────────────────
+  - name: genres
+    subtitle: Genre
+    design: backdrop
+    folders:
+      - { slug: action,            title: Action,            source: { genres: [Action] } }
+      - { slug: adventure,         title: Adventure,         source: { genres: [Adventure] } }
+      - { slug: animation,         title: Animation,         source: { genres: [Animation] } }
+      - { slug: anime,             title: Anime,             source: { keywords: [anime] } }
+      - { slug: comedy,            title: Comedy,            source: { genres: [Comedy] } }
+      - { slug: crime,             title: Crime,             source: { genres: [Crime] } }
+      - { slug: documentary,       title: Documentary,       source: { genres: [Documentary] } }
+      - { slug: drama,             title: Drama,             source: { genres: [Drama] } }
+      - { slug: family,            title: Family,            source: { genres: [Family] } }
+      - { slug: fantasy,           title: Fantasy,           source: { genres: [Fantasy] } }
+      - { slug: history,           title: History,           source: { genres: [History] } }
+      - { slug: horror,            title: Horror,            source: { genres: [Horror] }, accent: "#E53935" }
+      - { slug: k-drama,           title: K-Drama,           source: { media: tv, genres: [Drama], countries: [KR], min_votes: 60 } }
+      - { slug: martial-arts,      title: Martial Arts,      source: { keywords: [martial arts] } }
+      - { slug: music-musical,     title: Music & Musicals,  source: { any_genres: [Music], keywords: [musical] } }
+      - { slug: mystery,           title: Mystery,           source: { genres: [Mystery] } }
+      - { slug: romance,           title: Romance,           source: { genres: [Romance] } }
+      - { slug: romantic-comedy,   title: Rom-Com,           source: { genres: [Romance, Comedy] } }
+      - { slug: science-fiction,   title: Sci-Fi,            source: { genres: [Science Fiction] }, accent: "#4FC3F7" }
+      - { slug: sports,            title: Sports,            source: { keywords: [sports] } }
+      - { slug: stand-up-comedy,   title: Stand-Up,          source: { keywords: [stand-up comedy], min_votes: 30 } }
+      - { slug: superhero,         title: Superhero,         source: { keywords: [superhero] } }
+      - { slug: thriller,          title: Thriller,          source: { genres: [Thriller] } }
+      - { slug: war,               title: War,               source: { genres: [War] } }
+      - { slug: western,           title: Western,           source: { genres: [Western] } }
+
+  # ── Moods & vibes ─────────────────────────────────────────────────────────
+  - name: moods-and-vibes
+    label: Moods & Vibes
+    subtitle: Mood
+    design: backdrop
+    folders:
+      - { slug: 80s-and-90s-vibes,   title: "'80s & '90s Vibes",  source: { years: [1980, 1999] }, accent: "#FF4FD8" }
+      - { slug: adrenaline-rush,     title: Adrenaline Rush,     source: { any_genres: [Action, Thriller], min_votes: 1000 } }
+      - { slug: cozy-and-comforting, title: Cozy & Comforting,   source: { keywords: [feel-good, "heartwarming | wholesome", cozy] } }
+      - { slug: dark-and-gritty,     title: Dark & Gritty,       source: { genres: [Crime], keywords: [neo-noir, gritty, "dark | bleak"] } }
+      - { slug: epic-and-sweeping,   title: Epic & Sweeping,     source: { keywords: [epic, "sword and sandal | historical epic"], min_votes: 1000 } }
+      - { slug: feel-good,           title: Feel-Good,           source: { keywords: [feel-good] } }
+      - { slug: mind-bending,        title: Mind-Bending,        source: { keywords: ["plot twist", "nonlinear timeline", "time loop", "mind-bending | mindfuck"] } }
+      - { slug: slow-burn,           title: Slow Burn,           source: { keywords: ["slow burn"], min_votes: 100 } }
+      - { slug: spooky-and-creepy,   title: Spooky & Creepy,     source: { keywords: [supernatural, "haunted house", possession] } }
+      - { slug: tearjerkers,         title: Tearjerkers,         source: { keywords: ["tearjerker | tear jerker", "sad ending", "terminal illness"] } }
+
+  # ── Film collections (by genre) ───────────────────────────────────────────
+  # Franchise films (sequels and series) in each genre.
+  - name: film-collections
+    label: Film Collections
+    subtitle: Collection
+    design: fan
+    source: { media: movie, keywords: ["sequel"] }
+    folders:
+      - { slug: action,   title: Action Sagas,    source: { genres: [Action] } }
+      - { slug: comedy,   title: Comedy Series,   source: { genres: [Comedy] } }
+      - { slug: crime,    title: Crime Sagas,     source: { genres: [Crime] } }
+      - { slug: drama,    title: Drama Series,    source: { genres: [Drama] } }
+      - { slug: family,   title: Family Series,   source: { genres: [Family] } }
+      - { slug: fantasy,  title: Fantasy Sagas,   source: { genres: [Fantasy] } }
+      - { slug: horror,   title: Horror Franchises, source: { genres: [Horror] } }
+      - { slug: mystery,  title: Mystery Series,  source: { genres: [Mystery] } }
+      - { slug: sci-fi,   title: Sci-Fi Sagas,    source: { genres: [Science Fiction] } }
+      - { slug: thriller, title: Thriller Series, source: { genres: [Thriller] } }
+      - { slug: war,      title: War Sagas,       source: { genres: [War] } }
+
+  # ── Based on ──────────────────────────────────────────────────────────────
+  - name: based-on
+    label: Based On
+    subtitle: Based On
+    design: fan
+    source: { min_votes: 150 }
+    folders:
+      - { slug: anime-manga, title: Manga & Anime, source: { keywords: ["based on manga", "based on anime"] } }
+      - { slug: board-games, title: Board Games,   source: { keywords: ["based on board game"], min_votes: 30 } }
+      - { slug: books,       title: Books,         source: { keywords: ["based on novel or book | based on novel"] } }
+      - { slug: comics,      title: Comics,        source: { keywords: ["based on comic | based on comic book"] } }
+      - { slug: fairy-tale,  title: Fairy Tales,   source: { keywords: ["based on fairy tale | fairy tale"] } }
+      - { slug: mythology,   title: Mythology,     source: { keywords: ["greek mythology", "norse mythology", "mythology"] } }
+      - { slug: play,        title: Plays & Musicals, source: { keywords: ["based on play or musical | based on play"] } }
+      - { slug: short-story, title: Short Stories, source: { keywords: ["based on short story"] } }
+      - { slug: toy,         title: Toys,          source: { keywords: ["based on toy"], min_votes: 50 } }
+      - { slug: true-story,  title: True Stories,  source: { keywords: ["based on true story"] } }
+      - { slug: tv-show,     title: TV Shows,      source: { keywords: ["based on tv series | based on tv show"] } }
+      - { slug: video-games, title: Video Games,   source: { keywords: ["based on video game"], min_votes: 50 } }
+
+  # ── By decade ─────────────────────────────────────────────────────────────
+  - name: by-decade
+    label: By Decade
+    subtitle: Decade
+    design: mosaic
+    source: { media: movie }
+    folders:
+      - { slug: 50s-movies,   title: "The '50s",  source: { years: [1950, 1959], min_votes: 150 } }
+      - { slug: 60s-movies,   title: "The '60s",  source: { years: [1960, 1969], min_votes: 150 } }
+      - { slug: 70s-movies,   title: "The '70s",  source: { years: [1970, 1979] } }
+      - { slug: 80s-movies,   title: "The '80s",  source: { years: [1980, 1989] }, accent: "#FF4FD8" }
+      - { slug: 90s-movies,   title: "The '90s",  source: { years: [1990, 1999] } }
+      - { slug: 00s-movies,   title: "The 2000s", source: { years: [2000, 2009] } }
+      - { slug: 10s-movies,   title: "The 2010s", source: { years: [2010, 2019] } }
+      - { slug: 2020s-movies, title: "The 2020s", source: { years: [2020, 2029] } }
+
+  # ── Anime ─────────────────────────────────────────────────────────────────
+  - name: anime
+    subtitle: Anime
+    design: fan
+    source: { min_votes: 90 }
+    folders:
+      - { slug: discover-anime,                title: Discover Anime,         source: { keywords: [anime] } }
+      - { slug: isekai-and-fantasy-sagas,      title: Isekai & Fantasy,       source: { keywords: ["isekai"] } }
+      - { slug: shonen-and-action-anime,       title: Shōnen & Action,        source: { keywords: ["shounen | shonen"] } }
+      - { slug: slice-of-life-and-romance,     title: Slice of Life,          source: { all_keywords: [anime, "slice of life"] } }
+      - { slug: sports-and-competition-anime,  title: Sports Anime,           source: { all_keywords: [anime, sports] } }
+      - { slug: studio-spotlight,              title: Anime Studios,          source: { companies: [Studio Ghibli, MAPPA, Kyoto Animation, ufotable, Wit Studio, Toei Animation] } }
+
+  # ── Documentaries ─────────────────────────────────────────────────────────
+  - name: documentaries
+    subtitle: Documentary
+    design: backdrop
+    source: { genres: [Documentary], min_votes: 60 }
+    folders:
+      - { slug: history-war-and-civilizations,      title: History & War,         source: { keywords: [history, "world war ii", "ancient civilization | ancient world"] } }
+      - { slug: investigative-and-scandals,         title: Investigations,        source: { keywords: ["investigative journalism", scandal, corruption] } }
+      - { slug: music-and-concert-documentaries,    title: Music & Concerts,      source: { keywords: ["concert film | concert", musician, "music documentary | rock music"] } }
+      - { slug: nature-wildlife-and-earth,          title: Nature & Wildlife,     source: { keywords: [nature, wildlife, "planet earth | earth"] } }
+      - { slug: science-tech-and-cosmos,            title: Science & Cosmos,      source: { keywords: [science, technology, "outer space | space"] } }
+      - { slug: sports-and-athletic-stories,        title: Sports Stories,        source: { keywords: [sports, athlete] } }
+      - { slug: true-crime-and-serial-killers,      title: True Crime,            source: { keywords: ["true crime", "serial killer"] } }
+
+  # ── Kids & family ─────────────────────────────────────────────────────────
+  - name: kids-and-family
+    label: Kids & Family
+    subtitle: Family
+    design: fan
+    folders:
+      - { slug: animated-studio-spotlight,             title: Animation Studios,   source: { media: movie, companies: [Pixar, Walt Disney Animation Studios, DreamWorks Animation, Illumination, Sony Pictures Animation] } }
+      - { slug: discover-family,                       title: Discover Family,     source: { genres: [Family] } }
+      - { slug: disney-channel-and-family-tv-series,   title: Family TV,           source: { networks: [Disney Channel, Disney XD, Disney Junior, Nickelodeon] } }
+      - { slug: family-movie-night,                    title: Family Movie Night,  source: { media: movie, genres: [Family], sort: rating, min_votes: 1500 } }
+      - { slug: preschool-toddlers-and-little-kids,    title: Little Kids,         source: { media: tv, genres: [Kids], networks: [Disney Junior], min_votes: 15 } }
+      - { slug: saturday-morning-and-nostalgic-cartoons, title: Saturday Morning Cartoons, source: { media: tv, genres: [Animation], years: [1975, 2005], min_votes: 30 } }
+
+  # ── Reality TV ────────────────────────────────────────────────────────────
+  - name: reality-tv
+    label: Reality TV
+    subtitle: Reality
+    design: mosaic
+    source: { media: tv, genres: [Reality], min_votes: 30 }
+    folders:
+      - { slug: discover-reality-tv,                       title: Reality TV,           source: {} }
+      - { slug: culinary-battles-and-cooking-shows,        title: Cooking Shows,        source: { keywords: ["cooking competition | cooking", chef, baking] } }
+      - { slug: game-shows-talent-and-trivia,              title: Game & Talent Shows,  source: { keywords: ["game show", "talent show", "quiz show | quiz"] } }
+      - { slug: high-stakes-competition-and-survival,      title: Competition & Survival, source: { keywords: ["competition", "survival"] } }
+      - { slug: juicy-drama-dating-and-relationship,       title: Dating & Drama,       source: { keywords: ["dating | dating show", "relationship", "romance"] } }
+      - { slug: real-estate-home-and-lifestyle-makeovers,  title: Home & Makeovers,     source: { keywords: ["real estate", "home renovation | renovation", makeover] } }
+
+  # ── Awards ────────────────────────────────────────────────────────────────
+  # TMDB keywords for awards are patchy; run --check and adjust these if one comes up short.
+  - name: awards
+    subtitle: Awards
+    design: spotlight
+    source: { media: movie, sort: rating, min_votes: 1000 }
+    folders:
+      - { slug: academy-awards,    title: Academy Awards,    source: { keywords: ["oscar (best picture) | best picture | academy award winner | oscar winner"] }, accent: "#E8C46A" }
+      - { slug: festival-de-cannes, title: Cannes,           source: { keywords: ["palme d'or | cannes film festival | cannes"], min_votes: 200 }, accent: "#E8C46A" }
+      - { slug: golden-globes,     title: Golden Globes,     source: { keywords: ["golden globe winner | golden globe award | golden globe"] }, accent: "#E8C46A" }
+
+  # ── Spotlights ────────────────────────────────────────────────────────────
+  - name: spotlights
+    subtitle: Spotlight
+    design: spotlight
+    folders:
+      - { slug: spotlight-retro-rewind,        title: Retro Rewind,        source: { media: movie, years: [1940, 1989], sort: rating, min_votes: 2000 } }
+      - { slug: spotlight-the-cultural-pulse,  title: The Cultural Pulse,  source: { type: trending, window: day } }
+      - { slug: spotlight-the-headliner,       title: The Headliner,       source: { recent_days: 365, min_votes: 500 } }
+      - { slug: spotlight-the-living-legend,   title: The Living Legend,   source: { media: movie, sort: rating, min_votes: 15000 } }
+      - { slug: spotlight-the-powerhouse,      title: The Powerhouse,      source: { media: movie, sort: revenue } }
+      - { slug: spotlight-the-prestige-darling, title: The Prestige Darling, source: { media: movie, years: [2018, 2030], sort: rating, min_votes: 3000 } }
+      - { slug: spotlight-the-saga,            title: The Saga,            source: { media: movie, keywords: [sequel], min_votes: 5000 } }
+      - { slug: spotlight-the-visionary,       title: The Visionary,       source: { media: movie, any_genres: [Science Fiction, Fantasy], sort: rating, min_votes: 4000 } }
+
+  # ── Studios ───────────────────────────────────────────────────────────────
+  - name: studios
+    subtitle: Studio
+    design: mosaic
+    source: { media: movie }
+    folders:
+      - { slug: dreamworks-pictures,  title: DreamWorks,           source: { companies: [DreamWorks Pictures] } }
+      - { slug: focus-features,       title: Focus Features,       source: { companies: [Focus Features] } }
+      - { slug: searchlight-pictures, title: Searchlight Pictures, source: { companies: [Searchlight Pictures, Fox Searchlight Pictures] } }
+      - { slug: walt-disney-studio,   title: Walt Disney Pictures, source: { companies: [Walt Disney Pictures] } }
+
+  # ── Streaming services ────────────────────────────────────────────────────
+  # The name is matched against TMDB's streaming list for `region`.
+  - name: streaming-services
+    label: Streaming Services
+    subtitle: Streaming
+    design: mosaic
+    source: { min_votes: 60 }
+    folders:
+      - { slug: amc-plus,           title: AMC+,             source: { providers: ["AMC Plus | AMC+"] } }
+      - { slug: apple-tv,           title: Apple TV,         source: { providers: ["Apple TV Plus | Apple TV"] } }
+      - { slug: crave,              title: Crave,            source: { providers: [Crave], region: CA } }
+      - { slug: criterion-channel,  title: Criterion Channel, source: { providers: ["Criterion Channel | The Criterion Channel"], media: movie } }
+      - { slug: crunchyroll,        title: Crunchyroll,      source: { providers: [Crunchyroll], min_votes: 30 } }
+      - { slug: curiosity-stream,   title: CuriosityStream,  source: { providers: ["Curiosity Stream | CuriosityStream"], min_votes: 5 } }
+      - { slug: discovery-plus,     title: Discovery+,       source: { providers: ["Discovery Plus | discovery+"], min_votes: 15 } }
+      - { slug: disney-plus,        title: Disney+,          source: { providers: [Disney Plus] } }
+      - { slug: hayu,               title: hayu,             source: { providers: [hayu], region: GB, min_votes: 10 } }
+      - { slug: hbo-max,            title: HBO Max,          source: { providers: ["HBO Max | Max"] } }
+      - { slug: hulu,               title: Hulu,             source: { providers: [Hulu] } }
+      - { slug: magellan,           title: MagellanTV,       source: { providers: ["MagellanTV | Magellan TV"], min_votes: 5 } }
+      - { slug: mgm-plus,           title: MGM+,             source: { providers: ["MGM Plus | MGM+"] } }
+      - { slug: mubi,               title: MUBI,             source: { providers: [MUBI], media: movie } }
+      - { slug: netflix,            title: Netflix,          source: { providers: [Netflix] }, accent: "#E50914" }
+      - { slug: new-line-cinema,    title: New Line Cinema,  source: { companies: [New Line Cinema], media: movie, min_votes: 300 } }
+      - { slug: paramount-plus,     title: Paramount+,       source: { providers: ["Paramount Plus | Paramount+"] } }
+      - { slug: peacock,            title: Peacock,          source: { providers: ["Peacock Premium | Peacock"] } }
+      - { slug: pluto-tv,           title: Pluto TV,         source: { providers: [Pluto TV] } }
+      - { slug: prime-video,        title: Prime Video,      source: { providers: ["Amazon Prime Video | Prime Video"] } }
+      - { slug: starz,              title: Starz,            source: { providers: [Starz] } }
+      - { slug: tubi,               title: Tubi,             source: { providers: ["Tubi TV | Tubi"] } }
+
+  # ── Networks ──────────────────────────────────────────────────────────────
+  # The title is the network name (see NETWORKS in generate.py for the full list).
+  - name: networks
+    subtitle: Network
+    design: mosaic
+    source: { type: network, min_votes: 60 }
+    folders:
+      - { slug: a-e, title: "A&E" }
+      - { slug: abc, title: ABC }
+      - { slug: abc-au, title: "ABC TV (AU)" }
+      - { slug: adult-swim, title: Adult Swim }
+      - { slug: amc, title: AMC }
+      - { slug: animal-planet, title: Animal Planet }
+      - { slug: bbc-america, title: BBC America }
+      - { slug: bbc-four, title: BBC Four }
+      - { slug: bbc-one, title: BBC One }
+      - { slug: bbc-three, title: BBC Three }
+      - { slug: bbc-two, title: BBC Two }
+      - { slug: bet, title: BET }
+      - { slug: bravo, title: Bravo }
+      - { slug: canal-plus, title: "Canal+" }
+      - { slug: cartoon-network, title: Cartoon Network }
+      - { slug: cbc, title: CBC }
+      - { slug: cbs, title: CBS }
+      - { slug: channel-4, title: Channel 4 }
+      - { slug: channel-5, title: Channel 5 }
+      - { slug: cinemax, title: Cinemax }
+      - { slug: comedy-central, title: Comedy Central }
+      - { slug: cooking-channel, title: Cooking Channel }
+      - { slug: ctv, title: CTV }
+      - { slug: dave, title: Dave }
+      - { slug: discovery, title: Discovery }
+      - { slug: disney-channel, title: Disney Channel }
+      - { slug: disney-junior, title: Disney Junior }
+      - { slug: disney-xd, title: Disney XD }
+      - { slug: e, title: "E!" }
+      - { slug: e4, title: E4 }
+      - { slug: food-network, title: Food Network }
+      - { slug: fox, title: FOX }
+      - { slug: freeform, title: Freeform }
+      - { slug: fx, title: FX }
+      - { slug: game-show-network, title: Game Show Network }
+      - { slug: hallmark-channel, title: Hallmark Channel }
+      - { slug: hallmark-mystery, title: Hallmark Mystery }
+      - { slug: hbo, title: HBO }
+      - { slug: hgtv, title: HGTV }
+      - { slug: history, title: History }
+      - { slug: ifc, title: IFC }
+      - { slug: investigation-discovery, title: Investigation Discovery }
+      - { slug: itv, title: ITV }
+      - { slug: itv2, title: ITV2 }
+      - { slug: jtbc, title: JTBC }
+      - { slug: lifetime, title: Lifetime }
+      - { slug: magnolia-network, title: Magnolia Network }
+      - { slug: metv, title: MeTV }
+      - { slug: motortrend, title: MotorTrend }
+      - { slug: mtv, title: MTV }
+      - { slug: nat-geo-wild, title: Nat Geo Wild }
+      - { slug: national-geographic, title: National Geographic }
+      - { slug: nbc, title: NBC }
+      - { slug: nickelodeon, title: Nickelodeon }
+      - { slug: own, title: OWN }
+      - { slug: oxygen, title: Oxygen }
+      - { slug: paramount-network, title: Paramount Network }
+      - { slug: pbs, title: PBS }
+      - { slug: science-channel, title: Science Channel }
+      - { slug: showtime, title: Showtime }
+      - { slug: sky-atlantic, title: Sky Atlantic }
+      - { slug: sky-max, title: Sky Max }
+      - { slug: smithsonian-channel, title: Smithsonian Channel }
+      - { slug: starz, title: STARZ }
+      - { slug: sundance-tv, title: SundanceTV }
+      - { slug: syfy, title: Syfy }
+      - { slug: tbs, title: TBS }
+      - { slug: the-cw, title: The CW }
+      - { slug: tlc, title: TLC }
+      - { slug: tnt, title: TNT }
+      - { slug: tokyo-mx, title: Tokyo MX }
+      - { slug: travel-channel, title: Travel Channel }
+      - { slug: trutv, title: truTV }
+      - { slug: tv-land, title: TV Land }
+      - { slug: tv-tokyo, title: TV Tokyo }
+      - { slug: tvn, title: tvN }
+      - { slug: usa-network, title: USA Network }
+      - { slug: vh1, title: VH1 }
+      - { slug: vice-tv, title: Vice TV }
+      - { slug: we-tv, title: WE tv }

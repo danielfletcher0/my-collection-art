@@ -1,0 +1,67 @@
+name: Rotate collection art
+
+on:
+  schedule:
+    - cron: "17 9 * * *"        # nightly, 09:17 UTC (≈ 2 AM Pacific)
+  workflow_dispatch:            # "Run workflow" button in the Actions tab
+  push:
+    branches: [main]
+    paths:                      # rebuild right away when you change folders or the look
+      - collections.yaml
+      - generate.py
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rotate-art
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # Keep yesterday's image for any folder that fails today (TMDB hiccup, bad ID).
+      - name: Restore previous art
+        run: |
+          git fetch origin art --depth=1 2>/dev/null && git checkout FETCH_HEAD -- art 2>/dev/null || true
+
+      # Your Simkl lists are cached between runs (never published), so Simkl is only asked for
+      # them again when something on your account changed.
+      - name: Restore Simkl cache
+        uses: actions/cache@v4
+        with:
+          path: .simkl-cache.json
+          key: simkl-${{ github.run_id }}
+          restore-keys: simkl-
+
+      - name: Generate art
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          SIMKL_CLIENT_ID: ${{ secrets.SIMKL_CLIENT_ID }}
+          SIMKL_REFRESH_TOKEN: ${{ secrets.SIMKL_REFRESH_TOKEN }}
+          ART_BRANCH: art
+        run: python generate.py
+
+      # The images live on a separate "art" branch that is replaced with a single fresh
+      # commit every night. URLs never change, and the repo doesn't grow by a few MB a day.
+      - name: Publish to art branch
+        run: |
+          mkdir -p "$RUNNER_TEMP/pub"
+          cp -r art manifest.json index.html "$RUNNER_TEMP/pub/"
+          cd "$RUNNER_TEMP/pub"
+          git init -q -b art
+          git config user.name  "art-bot"
+          git config user.email "art-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Art for $(date -u +%F)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" art
