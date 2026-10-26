@@ -60,7 +60,8 @@ categories:
     label: My Lists
     subtitle: Simkl
     folders:
-      - { slug: continue-watching,   title: Continue Watching,   design: fan,    source: { type: simkl, status: watching } }
+      - { slug: continue-watching,   title: Watching,            design: fan,    source: { type: simkl, status: watching, media: both } }
+      - { slug: anime-watching,      title: Watching,            design: fan,    source: { type: simkl, status: watching, media: anime }, subtitle: Anime }
       - { slug: plan-to-watch,       title: Plan to Watch,       design: mosaic, source: { type: simkl, status: plantowatch, media: both } }
       - { slug: anime-plan-to-watch, title: Anime Watchlist,     design: mosaic, source: { type: simkl, status: plantowatch, media: anime } }
 
