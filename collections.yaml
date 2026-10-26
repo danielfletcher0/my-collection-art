@@ -35,13 +35,13 @@
 #     { type: titles, items: ["movie/603", "tv/1399"] }
 #     { type: simkl, status: plantowatch, media: anime }   one of your Simkl lists
 #
-# DESIGN — backdrop | spotlight | fan | mosaic | logo | topic | basic | abstract-spotlight | abstract-fan |
-#          abstract-mosaic. `design:` is the folder's main look (its plain cover.jpg/wide.jpg links). Every folder is also built in all the designs listed under
+# DESIGN — backdrop | spotlight | fan | mosaic | logo | topic | basic. `design:` is the folder's main look (its plain cover.jpg/wide.jpg links). Every folder is also built in all the designs listed under
 #          settings → designs, at art/<category>/<folder>/<design>/cover.jpg; manifest.json lists them.
 #          A folder or category can set its own `designs: [fan, mosaic]`.
 # OTHER  — subtitle, accent ("#E53935"), style (bottom | center), pool (titles to rotate through),
 #          rotate (true/false; Simkl lists default to most-recent-first)
-#          mood (dark | light): dark topics get deep, moody colours on basic, topic and abstract covers.
+#          mood (dark | light): dark topics get deep, moody colours on basic and topic covers.
+#          show_title (true | false): print the title on the cover (default: off, see settings)
 #          Horror, thriller, crime, war, mystery, true crime and similar are dark automatically.
 
 settings:
@@ -49,8 +49,9 @@ settings:
   region: US            # for streaming services
   language: en-US
   design: backdrop      # main design for folders/categories that don't set one
-  designs: [backdrop, spotlight, fan, mosaic, logo, topic, basic, abstract-spotlight, abstract-fan, abstract-mosaic]
+  designs: [backdrop, spotlight, fan, mosaic, logo, topic, basic]
                         # every folder is ALSO built in each of these; remove any you don't want
+  show_title: false     # no text on covers; set true here, or on a category/folder, to add titles
   workers: 6
 
 categories:

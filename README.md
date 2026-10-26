@@ -46,15 +46,14 @@ Each folder gets two images:
 | `logo` | Just the network's, service's or studio's logo, with no text, over a dim wall of its own titles | the logo + up to 18 posters |
 | `topic` | The folder's name over a straight grid of its posters, tinted in the folder's colour | up to 12 posters |
 | `basic` | The folder's name over soft, colourful blurred shapes in the folder's colour, with no movie art | nothing |
-| `abstract-spotlight` | Like `spotlight`, but with a generated stand-in poster instead of a real one | nothing |
-| `abstract-fan` | Like `fan`, with three stand-in posters | nothing |
-| `abstract-mosaic` | Like `mosaic`, with a wall of stand-in posters | nothing |
 
 `logo` is made only for folders about one network, streaming service or studio: the Networks, Streaming Services and Studios categories, 106 folders. Logos come from TMDB. Dark or grey wordmarks are turned white so they show up, and a service that TMDB only has an app icon for is shown as a rounded tile. To use a logo TMDB doesn't have, add `logo: https://...png` to that folder. `topic` works for every folder. `basic` needs nothing from TMDB, so it always builds and never changes; set `accent:` on a folder to choose its colours.
 
-**Dark topics.** Folders about dark subjects (horror, thriller, crime, war, mystery, true crime, spooky, slow burn and similar) get deep, moody colours on their `basic`, `topic` and `abstract-` covers: near-black with blood red, purple, dark teal or navy. This is decided from the folder's name; add `mood: dark` or `mood: light` to a folder to override it.
+**Dark topics.** Folders about dark subjects (horror, thriller, crime, war, mystery, true crime, spooky, slow burn and similar) get deep, moody colours on their `basic` and `topic` covers: near-black with blood red, purple, dark teal or navy. This is decided from the folder's name; add `mood: dark` or `mood: light` to a folder to override it.
 
-The designs built from TMDB art rotate nightly, never repeating the previous day's main pick. `basic` and the `abstract-` designs need nothing from TMDB and stay the same every night.
+The designs built from TMDB art rotate nightly, never repeating the previous day's main pick. `basic` needs nothing from TMDB and stays the same every night.
+
+**No text on covers.** By default the covers have no title, label or accent bar, since Nuvio shows the folder name itself; posters and fans sit centred instead. To print titles, set `show_title: true` under `settings:`, or on one category or folder.
 
 **Every design comes in both shapes:** a 2:3 poster (`cover.jpg`, `cover_url` in `manifest.json`) and a 16:9 landscape (`wide.jpg`, `wide_url`). Use whichever matches the folder shape you picked in Nuvio.
 
@@ -150,7 +149,7 @@ The three folders under My Lists read your actual Simkl lists, so their covers s
 - **Statuses:** `watching`, `plantowatch`, `hold`, `completed`, `dropped` or `all`.
 - **Media:** `media:` takes `movie`, `tv`, `anime`, `both` (movies and shows) or `all`.
 - **Anime:** anime that TMDB can't match uses Simkl's own poster. Those titles have no backdrops, so use a poster design for anime folders.
-- **Empty lists:** an empty list gets an abstract cover with its title instead of an error.
+- **Empty lists:** an empty list gets a plain colour cover instead of an error.
 
 The token is read-only. It stays valid as long as the nightly job keeps using it: 180 days, renewed on every use. If the job stops for more than six months, run `simkl_login.py` again. Never put the token in the repo itself, because Simkl automatically revokes tokens that appear on GitHub.
 

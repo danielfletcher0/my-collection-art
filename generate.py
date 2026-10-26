@@ -57,11 +57,8 @@ IMG = "https://image.tmdb.org/t/p"
 
 COVER = (1000, 1500)
 WIDE = (1280, 720)
-DESIGNS = ("backdrop", "spotlight", "fan", "mosaic", "logo", "topic", "basic",
-           "abstract-spotlight", "abstract-fan", "abstract-mosaic")
-POSTERS_NEEDED = {"backdrop": 0, "spotlight": 1, "fan": 3, "mosaic": 18, "logo": 18, "topic": 12, "basic": 0,
-                  "abstract-spotlight": 0, "abstract-fan": 0, "abstract-mosaic": 0}
-ABSTRACT_POSTERS = {"abstract-spotlight": 1, "abstract-fan": 3, "abstract-mosaic": 12}
+DESIGNS = ("backdrop", "spotlight", "fan", "mosaic", "logo", "topic", "basic")
+POSTERS_NEEDED = {"backdrop": 0, "spotlight": 1, "fan": 3, "mosaic": 18, "logo": 18, "topic": 12, "basic": 0}
 USES_TITLES = ("backdrop", "spotlight", "fan", "mosaic", "logo", "topic")  # built from movie/show art
 
 
@@ -642,6 +639,8 @@ def wrap_title(draw, text: str, max_w: int, start: int, min_size: int):
 def draw_title(img: Image.Image, title: str, subtitle: str | None, accent, box,
                valign: str = "bottom", align: str = "left", scale: float = 1.0) -> Image.Image:
     """Subtitle + big title + accent bar, laid out inside box=(x0, y0, x1, y1)."""
+    if not title:  # covers without text
+        return img
     w, h = img.size
     x0, y0, x1, y1 = box
     bw = x1 - x0
@@ -704,6 +703,8 @@ def design_backdrop(bg, posters, size, title, subtitle, accent, style):
     w, h = size
     base = fill(bg, size, 0.5 if w > h else 0.62)
     base = ImageOps.autocontrast(base, cutoff=1)
+    if not title:  # no text to make room for: just a soft vignette
+        return shade(base, Image.radial_gradient("L").resize(size).point(lambda v: int(v * 0.45)))
     if style == "center":
         base = shade(base, vertical_mask(size, lambda t: 120 + 60 * (1 - abs(t - 0.5) * 2)))
     else:
@@ -720,6 +721,10 @@ def design_spotlight(bg, posters, size, title, subtitle, accent, style):
     w, h = size
     p = posters[0]
     base = blurred_bg(p, size, darkness=0.5)
+    if not title:  # no text: the poster, centred
+        ph = int(h * (0.74 if w < h else 0.84))
+        paste_card(base, card(p, ph), (w // 2, h // 2))
+        return base
     if w < h:  # cover: poster up top, title underneath
         ph = int(h * 0.56)
         c = card(p, ph)
@@ -744,6 +749,15 @@ def design_fan(bg, posters, size, title, subtitle, accent, style):
     w, h = size
     left, mid, right = (posters * 3)[:3]
     base = blurred_bg(mid, size, darkness=0.42)
+    if not title:  # no text: the fan, centred
+        ph = int(h * (0.6 if w < h else 0.78))
+        cx, cy = w // 2, h // 2 + int(ph * 0.03)
+        spread = int(w * (0.25 if w < h else 0.13))
+        tilt = 9 if w < h else 10
+        paste_card(base, card(left, int(ph * 0.84)), (cx - spread, cy + int(ph * 0.05)), angle=tilt)
+        paste_card(base, card(right, int(ph * 0.84)), (cx + spread, cy + int(ph * 0.05)), angle=-tilt)
+        paste_card(base, card(mid, ph), (cx, cy), shadow=0.85)
+        return base
     if w < h:  # cover
         ph = int(h * 0.46)
         cy = int(h * 0.08) + ph // 2 + int(ph * 0.04)
@@ -796,6 +810,8 @@ def design_mosaic(bg, posters, size, title, subtitle, accent, style):
     """A tilted, staggered wall of posters behind the title."""
     w, h = size
     base = ImageEnhance.Color(mosaic_wall(posters, size)).enhance(0.85)
+    if not title:  # no text: just the wall, lightly dimmed at the edges
+        return shade(base, Image.radial_gradient("L").resize(size).point(lambda v: int(30 + v * 0.4)))
     if style == "center":
         base = shade(base, vertical_mask(size, lambda t: 150 + 55 * (1 - abs(t - 0.5) * 2)))
     else:
@@ -918,7 +934,7 @@ def design_logo(logo, posters, size, title, subtitle, accent, style):
         base = shade(base, spot.point(lambda v: int(150 * (1 - v / 255) ** 1.5)))
         base = accent_wash(base, accent)
     else:
-        base = brand_bg(size, accent, title)
+        base = brand_bg(size, accent, str(accent))
     if logo_is_tile(logo):  # square app icon: show it as a rounded tile
         side = int(min(w, h) * (0.46 if cover else 0.5))
         tile = fill(logo.convert("RGB"), (side, side), 0.5, 0.5).convert("RGBA")
@@ -961,12 +977,16 @@ def design_topic(bg, posters, size, title, subtitle, accent, style, dark=False):
             lo, hi, mid = shift_hue(accent, 0, l=0.08, s=0.6), shift_hue(accent, 0, l=0.82, s=0.55), accent
         base = ImageOps.colorize(ImageOps.autocontrast(grid.convert("L"), cutoff=2), lo, hi, mid=mid)
         base = Image.blend(base, grid, 0.08 if dark else 0.18)  # a hint of the real colours
+        if not title:
+            return base
         base = shade(base, vertical_mask(size, lambda t: 70 + 185 * max(0, (t - 0.35) / 0.65) ** 1.3))
         pad = int(w * 0.075)
         return draw_title(base, title, subtitle, accent, (pad, 0, w - pad, int(h * 0.93)),
                           valign="center" if style == "center" else "bottom",
                           align="center" if style == "center" else "left")
-    base = brand_bg(size, accent, title, rich=True)  # nothing to blur (e.g. an empty list)
+    base = brand_bg(size, accent, str(accent), rich=True)  # nothing to blur (e.g. an empty list)
+    if not title:
+        return base
     # a huge, faint first letter for some depth
     letter = title.strip()[:1].upper() or "·"
     big = ImageFont.truetype(str(FONT_TITLE), int(max(w, h) * 0.95))
@@ -1200,6 +1220,8 @@ def design_basic(bg, posters, size, title, subtitle, accent, style, dark=False):
         return design_backdrop(bg, posters, size, title, subtitle, accent, style)
     w, h = size
     base = fill(bg, size, 0.5 if w > h else 0.62)  # no contrast stretch: keep it dark
+    if not title:
+        return base
     base = shade(base, vertical_mask(size, lambda t: 230 * max(0.0, (t - 0.45) / 0.55) ** 1.3))
     pad = int(w * 0.075)
     return draw_title(base, title, subtitle, accent, (pad, 0, w - pad, int(h * 0.93)),
@@ -1208,8 +1230,6 @@ def design_basic(bg, posters, size, title, subtitle, accent, style, dark=False):
 
 
 RENDERERS["basic"] = design_basic
-RENDERERS.update({"abstract-spotlight": design_spotlight, "abstract-fan": design_fan,
-                  "abstract-mosaic": design_mosaic})
 
 
 def basic_background(seed: str, accent, size=(1920, 1080)) -> Image.Image:
@@ -1232,7 +1252,7 @@ def basic_background(seed: str, accent, size=(1920, 1080)) -> Image.Image:
 
 
 def demo_poster(seed: str, dark: bool = False) -> Image.Image:
-    """Stand-in 2:3 poster: abstract art plus a made-up title (used by --demo and the abstract designs)."""
+    """Stand-in 2:3 poster: abstract art plus a made-up title (used by --demo)."""
     rnd = random.Random(seed)
     w, h = 500, 750
     img = dark_background(seed, dark_accent(seed), (w, h)) if dark else demo_background(seed, (w, h))
@@ -1287,7 +1307,7 @@ def pick_many(items: list[dict], slug: str, seed: str, k: int) -> list[dict]:
 
 
 NAME_FROM_TITLE = ("network", "provider", "company", "person", "keyword", "genre")
-FOLDER_KEYS = ("subtitle", "design", "designs", "style", "accent", "pool", "rotate", "mood")
+FOLDER_KEYS = ("subtitle", "design", "designs", "style", "accent", "pool", "rotate", "mood", "show_title")
 
 
 def load_folders(cfg: dict) -> list[dict]:
@@ -1373,15 +1393,15 @@ def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
         rotate = f.get("rotate", src.get("type") != "simkl")
         accent = hex_rgb(f["accent"]) if f.get("accent") else None
         dark = is_dark(f)
+        # text on the cover is off unless `show_title: true` (settings, category or folder)
+        show = f.get("show_title", ctx.settings.get("show_title", False))
+        text_title, text_sub = (f["title"], f.get("subtitle")) if show else (None, None)
 
         for d in designs:
             try:
                 need = POSTERS_NEEDED[d]
                 bg, posters, picked, render_as = None, [], [], d
-                if d in ABSTRACT_POSTERS:  # stand-in posters instead of real ones; never changes
-                    posters = [demo_poster(f"{path}:abstract:{i}", dark) for i in range(ABSTRACT_POSTERS[d])]
-                    render_as, built_from = d.split("-", 1)[1], ["abstract"]
-                elif d == "basic":  # no movie art: colour blobs in the folder's colour, never changes
+                if d == "basic":  # no movie art: colour blobs in the folder's colour, never changes
                     basic_acc = hex_rgb(f["accent"]) if f.get("accent") else (
                         dark_accent(path) if dark else palette_accent(path))
                     bg = (dark_background if dark else basic_background)(path, basic_acc)
@@ -1434,9 +1454,6 @@ def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
                         else (accent or palette_accent(path))
                 elif d == "basic":
                     acc = basic_acc
-                elif d in ABSTRACT_POSTERS:
-                    acc = hex_rgb(f["accent"]) if f.get("accent") else (
-                        dark_accent(path) if dark else accent_from(posters[0]))
                 else:
                     if accent is None:  # pick once, so every design of a folder shares its colour
                         accent = accent_from(bg or posters[0])
@@ -1444,7 +1461,7 @@ def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
                 (out / d).mkdir(parents=True, exist_ok=True)
                 for name, size in (("cover", COVER), ("wide", WIDE)):
                     extra = {"dark": dark} if render_as in ("topic", "basic") else {}
-                    img = RENDERERS[render_as](bg, posters, size, f["title"], f.get("subtitle"), acc,
+                    img = RENDERERS[render_as](bg, posters, size, text_title, text_sub, acc,
                                                f.get("style", "bottom"), **extra)
                     img.save(out / d / f"{name}.jpg", "JPEG", quality=86, optimize=True, progressive=True)
                     if d == main:
@@ -1459,6 +1476,11 @@ def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
                 if d == main:
                     raise
                 entry.setdefault("design_errors", {})[d] = str(e)
+
+        # clear out designs this folder no longer uses (e.g. one removed from `designs:`)
+        for sub in out.iterdir():
+            if sub.is_dir() and sub.name not in designs:
+                shutil.rmtree(sub, ignore_errors=True)
 
         # your Simkl lists stay out of the public manifest/gallery (the images still show posters)
         if src.get("type") == "simkl" and not src.get("show_titles", False) and not args.demo:
@@ -1596,6 +1618,15 @@ def main() -> int:
             manifest["collections"].append(entry)
         elif f["path"] in old:
             manifest["collections"].append(old[f["path"]])
+
+    if not only and ART.exists():  # full run: clear out folders no longer in collections.yaml
+        keep = {f["path"] for f in folders}
+        for cat in [d for d in ART.iterdir() if d.is_dir()]:
+            for folder in [d for d in cat.iterdir() if d.is_dir()]:
+                if f"{cat.name}/{folder.name}" not in keep:
+                    shutil.rmtree(folder, ignore_errors=True)
+            if not any(cat.iterdir()):
+                cat.rmdir()
 
     (ROOT / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
     write_gallery(manifest)
