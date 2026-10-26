@@ -1307,7 +1307,8 @@ def pick_many(items: list[dict], slug: str, seed: str, k: int) -> list[dict]:
 
 
 NAME_FROM_TITLE = ("network", "provider", "company", "person", "keyword", "genre")
-FOLDER_KEYS = ("subtitle", "design", "designs", "style", "accent", "pool", "rotate", "mood", "show_title")
+FOLDER_KEYS = ("subtitle", "design", "designs", "style", "accent", "pool", "rotate", "mood", "show_title",
+               "show_subtitle")
 
 
 def load_folders(cfg: dict) -> list[dict]:
@@ -1393,9 +1394,11 @@ def build_folder(f: dict, ctx: Ctx, base: str) -> tuple[dict, str]:
         rotate = f.get("rotate", src.get("type") != "simkl")
         accent = hex_rgb(f["accent"]) if f.get("accent") else None
         dark = is_dark(f)
-        # text on the cover is off unless `show_title: true` (settings, category or folder)
-        show = f.get("show_title", ctx.settings.get("show_title", False))
-        text_title, text_sub = (f["title"], f.get("subtitle")) if show else (None, None)
+        # the title is on by default; the small label above it (subtitle) is off by default
+        show = f.get("show_title", ctx.settings.get("show_title", True))
+        show_sub = f.get("show_subtitle", ctx.settings.get("show_subtitle", False))
+        text_title = f["title"] if show else None
+        text_sub = f.get("subtitle") if show and show_sub else None
 
         for d in designs:
             try:

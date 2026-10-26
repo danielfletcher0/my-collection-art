@@ -53,7 +53,7 @@ Each folder gets two images:
 
 The designs built from TMDB art rotate nightly, never repeating the previous day's main pick. `basic` needs nothing from TMDB and stays the same every night.
 
-**No text on covers.** By default the covers have no title, label or accent bar, since Nuvio shows the folder name itself; posters and fans sit centred instead. To print titles, set `show_title: true` under `settings:`, or on one category or folder.
+**Text on covers.** Covers show the folder's title, but not the small label above it ("GENRE", "SIMKL" and so on). To show the labels, set `show_subtitle: true` under `settings:` or on one category or folder. To leave text off entirely, set `show_title: false`; posters and fans then sit centred.
 
 **Every design comes in both shapes:** a 2:3 poster (`cover.jpg`, `cover_url` in `manifest.json`) and a 16:9 landscape (`wide.jpg`, `wide_url`). Use whichever matches the folder shape you picked in Nuvio.
 

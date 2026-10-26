@@ -41,7 +41,7 @@
 # OTHER  — subtitle, accent ("#E53935"), style (bottom | center), pool (titles to rotate through),
 #          rotate (true/false; Simkl lists default to most-recent-first)
 #          mood (dark | light): dark topics get deep, moody colours on basic and topic covers.
-#          show_title (true | false): print the title on the cover (default: off, see settings)
+#          show_title / show_subtitle (true | false): override the settings below for one folder or category
 #          Horror, thriller, crime, war, mystery, true crime and similar are dark automatically.
 
 settings:
@@ -51,7 +51,8 @@ settings:
   design: backdrop      # main design for folders/categories that don't set one
   designs: [backdrop, spotlight, fan, mosaic, logo, topic, basic]
                         # every folder is ALSO built in each of these; remove any you don't want
-  show_title: false     # no text on covers; set true here, or on a category/folder, to add titles
+  show_title: true      # the folder's title on the cover (false = no text at all)
+  show_subtitle: false  # the small label above the title ("GENRE", "SIMKL"...); true to show it
   workers: 6
 
 categories:
@@ -62,7 +63,7 @@ categories:
     subtitle: Simkl
     folders:
       - { slug: continue-watching,   title: Watching,            design: fan,    source: { type: simkl, status: watching, media: both } }
-      - { slug: anime-watching,      title: Watching,            design: fan,    source: { type: simkl, status: watching, media: anime }, subtitle: Anime }
+      - { slug: anime-watching,      title: Watching,            design: fan,    source: { type: simkl, status: watching, media: anime } }
       - { slug: plan-to-watch,       title: Plan to Watch,       design: mosaic, source: { type: simkl, status: plantowatch, media: both } }
       - { slug: anime-plan-to-watch, title: Anime Watchlist,     design: mosaic, source: { type: simkl, status: plantowatch, media: anime } }
 
